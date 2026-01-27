@@ -1,0 +1,21 @@
+Metadata-Version: 2.2
+Name: InfluxDBms
+Version: 0.1.1
+Summary: Python InfluxDB Class
+Author: Angela Fernandez
+Author-email: j.ordieres@upm.es
+Keywords: python,InfluxDB access package
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Education
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: MacOS :: MacOS X
+Classifier: Operating System :: Microsoft :: Windows
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: keywords
+Dynamic: summary
+
+Python3 package to serve as the interface to InfluxDB for Multiple Sclerosis data

@@ -1,0 +1,6 @@
+pandas>=2.0.0
+numpy>=1.26.0
+matplotlib>=3.8.0
+scipy>=1.11.0
+pydantic>=2.5.0
+tables>=3.9.0

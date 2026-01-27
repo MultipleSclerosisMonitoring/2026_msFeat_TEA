@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gait_analysis_tfg"
+version = "0.2.0"
+description = "Pipeline profesional para el análisis biomecánico de señales de marcha"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "Teresa Estevan Autrán" }
+]
+# Aquí incluimos todas las librerías que hemos usado en los códigos definitivos
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.26.0",
+    "matplotlib>=3.8.0",
+    "scipy>=1.11.0",
+    "pydantic>=2.5.0",
+    "tables>=3.9.0",  # Necesaria para leer/escribir HDF5 con Pandas
+]
+
+[project.scripts]
+# Esto permite que el profesor ejecute los análisis con comandos simples en la terminal
+analyze-gait = "scripts.process_gait_signals:main"
+extract-data = "scripts.batch_extractor:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

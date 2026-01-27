@@ -1,0 +1,3 @@
+[console_scripts]
+analyze-gait = scripts.process_gait_signals:main
+extract-data = scripts.batch_extractor:main
