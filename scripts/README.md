@@ -17,6 +17,13 @@ A professional-grade CLI tool for mass extraction of high-frequency gait signals
 - **Environment Sync**: Handles automatic conversion between Clinical Local Time (CET/CEST) and Database UTC (ISO 8601).
 - **CLI Parameterization**: Fully configurable via `argparse` for flexible batch processing.
 
+<<<<<<< HEAD
+### 2. `process_gait_signals.py` (In Development)
+Module dedicated to digital signal processing, including:
+- Butterworth filtering for noise reduction.
+- Gyroscope-based turn detection.
+- Gait event identification (Heel Strike / Toe Off).
+=======
 ### 2. `batch_process_all.py` 
 The main analysis engine for mass processing of the local HDF5 database.
 - **Workflow**: Iterates through all trials, applies the DSP pipeline, and exports results.
@@ -27,6 +34,7 @@ The main analysis engine for mass processing of the local HDF5 database.
 ### 3. `process_gait_signals.py`
 Unit testing and debugging tool for the processing pipeline.
 - **Purpose**: Used to fine-tune filters and peak detection parameters on a single specific trial before running a full batch.
+>>>>>>> origin/master
 
 ## Usage
 To ensure correct module resolution, these scripts must be executed from the **project root** directory.
@@ -52,6 +60,9 @@ python scripts/batch_extractor.py --test TUG --csv tests.csv --out data/raw
 
 # View all available options
 python scripts/batch_extractor.py --help
+<<<<<<< HEAD
+```
+=======
 ```
 
 ### 2. Running Mass Processing & Analysis
@@ -59,3 +70,4 @@ python scripts/batch_extractor.py --help
     # Run the complete analysis batch
     python scripts/batch_process_all.py
 ```
+>>>>>>> origin/master

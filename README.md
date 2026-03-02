@@ -4,7 +4,7 @@
 This project focuses on the automated acquisition and processing of high-frequency gait signals from clinical tests. The system is designed to be independent, scalable, and follows professional Object-Oriented Programming (OOP) standards.
 
 ## Tech Stack
-* **Language:** Python 3.12
+* **Language:** Python 3.12 (Strictly required)
 * **Database:** InfluxDB (Flux Query Language)
 * **Data Storage:** HDF5 (Hierarchical Data Format)
 * **Key Libraries:** Pandas, Pydantic (v2), Influxdb-client, PyYAML, Tables.

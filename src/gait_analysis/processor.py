@@ -1,169 +1,233 @@
-import pandas as pd
-import numpy as np
-import matplotlib
-#Configuración para evitar errores en servidores sin entorno gráfico 
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+"""
+Digital Signal Processing (DSP) Module for Human Gait Analysis.
+
+This module provides high-level abstractions for processing inertial and 
+pressure sensor data. It focuses on zero-phase digital filtering, 
+automated spatial calibration, and clinical metric extraction such as 
+stride time variability.
+
+The architecture ensures hardware-agnostic processing by implementing 
+gravity-based orientation detection and pydantic-validated configuration.
+
+Author: Teresa Estevan Autrán
+Version: 5.1.0
+"""
+
 import logging
+import numpy as np
+import pandas as pd
+from typing import Dict, Any, Tuple, Optional, List
 from scipy.signal import butter, filtfilt, find_peaks
 from pydantic import BaseModel, Field
-from typing import Dict, Any, Tuple, Optional 
-from pathlib import Path    
 
-# Configuración del sistema de registros (Logging)
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+# Local module logger
 logger = logging.getLogger(__name__)
 
 class ProcessConfig(BaseModel):
-   """Esquema de configuración para el procesamiento de señales de marcha.
-
-    Utiliza Pydantic v2 para la validación estricta de tipos y gestión de valores por defecto.
-    
-    Attributes:
-        fs (float): Frecuencia de muestreo de los sensores en Hz.
-        cutoff_pressure (float): Frecuencia de corte para el filtro de los sensores de presión.
-        cutoff_gyro (float): Frecuencia de corte para las señales del giroscopio.
-        gyro_threshold (float): Umbral de velocidad angular (°/s) para detectar giros.
-        save_plots (bool): Indica si se deben exportar gráficos a disco.
     """
-   fs: float = Field(default=100.0, ge=0.1)
-   cutoff_pressure: float = Field(default=5.0, ge=0.1)
-   cutoff_gyro: float = Field(default=2.0, ge=0.1)
-   gyro_threshold: float = Field(default=50.0)
-   save_plots: bool = Field(default=True)
-   min_peak_distance: int = Field(default=50)
-   min_peak_height: float = Field(default=200.0)
+    Configuration schema for gait signal processing parameters.
+
+    Validated via Pydantic v2 to ensure strict typing and range constraints 
+    on DSP hyperparameters.
+
+    Attributes
+    ----------
+    fs : float
+        Sampling frequency in Hz. Must be positive.
+    cutoff_pressure : float
+        Low-pass cutoff frequency for pressure sensors (S0) in Hz.
+    cutoff_gyro : float
+        Low-pass cutoff frequency for gyroscope signals (Gz) in Hz.
+    gyro_threshold : float
+        Angular velocity threshold (°/s) to trigger turn detection.
+    min_peak_distance : int
+        Minimum number of samples between consecutive Heel Strikes.
+    min_peak_height : float
+        Normalized amplitude threshold for peak detection on S0.
+    """
+    fs: float = Field(default=100.0, ge=0.1)
+    cutoff_pressure: float = Field(default=5.0, ge=0.1)
+    cutoff_gyro: float = Field(default=2.0, ge=0.1)
+    gyro_threshold: float = Field(default=50.0)
+    min_peak_distance: int = Field(default=50)
+    min_peak_height: float = Field(default=0.2)
+
 
 class GaitDataProcessor:
-   """Lógica avanzada para el análisis y procesamiento digital de señales de marcha.
-
-    Esta clase encapsula un pipeline de procesamiento digital de señales (DSP) diseñado
-    para ser hardware-agnóstico. Implementa algoritmos de autocalibración para deducir
-    la orientación del sensor mediante física, eliminando la necesidad de configurar 
-    manualmente los ejes espaciales.
-
-    El pipeline incluye:
-        1. Autodetección de la vertical mediante análisis de componentes gravitatorias.
-        2. Filtrado digital zero-phase para la eliminación de artefactos.
-        3. Segmentación espacial para identificar y excluir fases de giro.
-        4. Detección heurística de eventos de impacto (Heel Strikes).
-
-    Arguments:
-        config (Optional[ProcessConfig]): Objeto de configuración que define los 
-            umbrales de filtrado, detección y parámetros de salida. Si es None, 
-            se instancian los valores por defecto validados por Pydantic.
-
-    Attributes:
-        config (ProcessConfig): Configuración activa del procesador.
-        logger (logging.Logger): Instancia para el registro profesional de eventos 
-            y advertencias biomecánicas.
     """
-   def __init__(self, config: Optional[ProcessConfig] = None):
-      """Inicializa el procesador con una configuración específica."""
-      self.config = config or ProcessConfig()
-      self.logger = logging.getLogger(__name__)
+    Main engine for biomechanical signal decomposition and event detection.
 
-   def _autodetect_vertical_axis(self, df: pd.DataFrame) -> str:
-      """Deduce automáticamente el eje vertical analizando la gravedad.
+    Provides a robust pipeline for transforming raw sensor telemetry into 
+    validated gait cycles. Includes automated vertical axis detection and 
+    steady-state walking segmentation.
 
-        Busca el componente de aceleración con mayor magnitud constante para 
-        establecer el eje de referencia de impactos, garantizando la robustez 
-        del análisis ante cambios en la colocación del sensor.
+    Parameters
+    ----------
+    config : Optional[ProcessConfig], default=None
+        Injected configuration object. If None, default values are used.
 
-        Arguments:
-            df (pd.DataFrame): Datos crudos con ejes de aceleración (Ax, Ay, Az).
-
-        Returns:
-            str: Identificador de la columna detectada como vertical.
-        """
-      axes = ['Ax', 'Ay', 'Az']
-      available_axes = [ax for ax in axes if ax in df.columns]
-      if not available_axes:
-        logger.warning("No se hallaron ejes Ax, Ay, Az. Se asume 'Az' por defecto.")
-        return 'Az'
-      # El eje con mayor aceleración media constante es la vertical (Gravedad)
-      means = df[available_axes].abs().mean()
-      detected_axis = means.idxmax()
-      
-      logger.info(f" Autocalibración exitosa. Eje vertical detectado: {detected_axis}")
-      return detected_axis
-    
-   def _butter_lowpass_filter(self, data: np.ndarray, cutoff: float) -> np.ndarray:
-    """Aplica un filtro Butterworth paso bajo de cuarto orden y fase cero.
-
-        Arguments:
-            data (np.ndarray): Array 1D que contiene la señal cruda del sensor.
-            cutoff (float): Frecuencia de corte deseada en Hz.
-
-        Returns:
-            np.ndarray: Señal suavizada con el ruido de alta frecuencia eliminado.
+    Attributes
+    ----------
+    config : ProcessConfig
+        The active configuration schema for the processor instance.
+    logger : logging.Logger
+        Scoped logger for tracking DSP events and warnings.
     """
-    nyq = 0.5 * self.config.fs
-    normal_cutoff = cutoff / nyq
-    b, a = butter(N=4, Wn=normal_cutoff, btype='low', analog=False)
-    y = filtfilt(b, a, data)
-    return y
-   
-   def process_signals(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any], np.ndarray]:
-    """Ejecuta el pipeline completo de análisis sobre un ensayo de marcha.
 
-        Realiza la limpieza, autocalibración, filtrado y detección de eventos, 
-        integrando metadatos de contexto como coordenadas GPS si están disponibles.
+    def __init__(self, config: Optional[ProcessConfig] = None):
+        """Initialize the processor with validated configuration."""
+        self.config = config or ProcessConfig()
+        self.logger = logging.getLogger(__name__)
 
-        Arguments:
-            df (pd.DataFrame): DataFrame de entrada con señales de presión (S0), 
-                acelerometría (Ax, Ay, Az), giroscopio (Gz) y marcas de tiempo.
-
-        Returns:
-            Tuple[pd.DataFrame, Dict[str, Any], np.ndarray]:
-                - df_proc: DataFrame enriquecido con señales filtradas y máscaras.
-                - metrics: Diccionario con resultados (conteo de pasos, stride, GPS).
-                - peaks: Array de índices correspondientes a los Heel Strikes detectados.
-
-        Raises:
-            ValueError: Si el DataFrame no contiene las columnas mínimas requeridas.
+    def _autodetect_vertical_axis(self, df: pd.DataFrame) -> str:
         """
-    if 'S0' not in df.columns or '_time' not in df.columns:
-            raise ValueError("El DataFrame debe contener al menos las columnas 'S0' y '_time'.")
-    
-    # 1. Preparación y ordenación cronológica
-    df = df.sort_values('_time').reset_index(drop=True)
-    df['_time'] = pd.to_datetime(df['_time'])
+        Identify the vertical axis based on gravitational component analysis.
 
-    # 2. Autodetección de orientación
-    v_axis = self._autodetect_vertical_axis(df)
+        Assumes that the axis with the highest absolute mean acceleration 
+        represents the primary vertical vector (gravity) during steady-state 
+        or static periods.
 
-    # 3. Filtrado de señales
-    df['S0_filt'] = self._butter_lowpass_filter(df['S0'].values, self.config.cutoff_pressure)
-    df['Gz_filt'] = self._butter_lowpass_filter(df['Gz'].values, self.config.cutoff_gyro)
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Input dataframe containing at least 'Ax', 'Ay', 'Az' columns.
 
-    # 4. Segmentación de giros (Giroscopio > Umbral)
-    df['is_turning'] = df['Gz_filt'].abs() > self.config.gyro_threshold
+        Returns
+        -------
+        str
+            The label of the detected vertical axis (e.g., 'Az').
+        """
+        axes = ['Ax', 'Ay', 'Az']
+        available_axes = [ax for ax in axes if ax in df.columns]
+        
+        if not available_axes:
+            self.logger.warning("Inertial axes missing. Defaulting to 'Az'.")
+            return 'Az'
 
-    # 5. Detección de pasos (Heel Strikes) en zonas de marcha estable
-    s0_clean = df['S0_filt'].copy()
-    s0_clean[df['is_turning']] = 0 # Ignorar picos durante rotaciones
-    peaks, _ = find_peaks(
+        # Eje con mayor magnitud constante (Gravedad)
+        means = df[available_axes].abs().mean()
+        detected_axis = means.idxmax()
+        
+        self.logger.debug(f"Gravity analysis results: {means.to_dict()}")
+        self.logger.info(f"Spatial autocalibration successful. Vertical axis: {detected_axis}")
+        
+        return detected_axis
+
+    def _butter_lowpass_filter(self, data: np.ndarray, cutoff: float) -> np.ndarray:
+        """
+        Apply a 4th-order zero-phase Butterworth low-pass filter.
+
+        Uses filtfilt to ensure zero phase distortion, which is critical for 
+        maintaining the temporal alignment of biomechanical events.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            1D array of raw sensor telemetry.
+        cutoff : float
+            Cutoff frequency in Hz.
+
+        Returns
+-------
+        np.ndarray
+            Smoothed signal with high-frequency artifacts removed.
+        """
+        nyq = 0.5 * self.config.fs
+        normal_cutoff = cutoff / nyq
+        b, a = butter(N=4, Wn=normal_cutoff, btype='low', analog=False)
+        return filtfilt(b, a, data)
+
+    def process_signals(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any], np.ndarray]:
+        """
+        Execute the full analysis pipeline on a gait trial.
+
+        The pipeline follows a deterministic sequence:
+        1. Temporal sorting and datetime conversion.
+        2. Orientation autodetection via gravity vectors.
+        3. Zero-phase digital filtering of pressure and rotational signals.
+        4. Spatial segmentation (exclusion of turning phases).
+        5. Heuristic event detection (Heel Strikes) and metric calculation.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Raw dataset containing '_time', 'S0', 'Gz', and IMU axes.
+
+        Returns
+        -------
+        df_proc : pd.DataFrame
+            Enriched dataframe with filtered signals and masks.
+        metrics : Dict[str, Any]
+            Dictionary containing 'pasos_detectados', 'stride_medio_s', 
+            'stride_std_s', and 'posicion_gps'.
+        peaks : np.ndarray
+            Array of indices identifying the detected Heel Strike events.
+
+        Raises
+        ------
+        ValueError
+            If 'S0' or '_time' columns are missing from the input dataframe.
+        """
+        self.logger.debug("Starting gait signal processing pipeline.")
+
+        if 'S0' not in df.columns or '_time' not in df.columns:
+            msg = "Data Integrity Error: 'S0' and '_time' are mandatory."
+            self.logger.error(msg)
+            raise ValueError(msg)
+
+        # 1. Chronological sorting
+        df = df.sort_values('_time').reset_index(drop=True)
+        df['_time'] = pd.to_datetime(df['_time'])
+
+        # 2. Calibration and Filtering
+        v_axis = self._autodetect_vertical_axis(df)
+        df['S0_filt'] = self._butter_lowpass_filter(df['S0'].values, self.config.cutoff_pressure)
+        
+        # 3. Turn Segmentation (Gz-based)
+        if 'Gz' in df.columns:
+            df['Gz_filt'] = self._butter_lowpass_filter(df['Gz'].values, self.config.cutoff_gyro)
+            df['is_turning'] = df['Gz_filt'].abs() > self.config.gyro_threshold
+        else:
+            self.logger.warning("Gz signal missing. Turn segmentation disabled.")
+            df['is_turning'] = pd.Series(False, index=df.index)
+
+        # Logging granular for DSP verification
+        self.logger.debug(f"Filtered S0 head: {df['S0_filt'].head().values}")
+
+        # 4. Heel Strike Detection
+        # Isolate steady-state walking by masking turns
+        s0_clean = df['S0_filt'].copy()
+        s0_clean[df['is_turning']] = 0 
+        
+        peaks, _ = find_peaks(
             s0_clean, 
             distance=self.config.min_peak_distance, 
             height=self.config.min_peak_height
-    )
+        )
+
+        # 5. Scientific Metric Consolidation
+        metrics = {
+            'pasos_detectados': len(peaks),
+            'stride_medio_s': 0.0,
+            'stride_std_s': 0.0,
+            'eje_vertical_utilizado': v_axis,
+            'posicion_gps': "N/A"
+        }
+
+        # Contextual GPS data extraction
+        if {'lat', 'lng'}.issubset(df.columns):
+            metrics['posicion_gps'] = f"{df['lat'].iloc[0]}, {df['lng'].iloc[0]}"
+
+        # Statistical analysis of gait cycles
+        if len(peaks) > 1:
+            step_times = df['_time'].iloc[peaks].values
+            intervals = np.diff(step_times) / np.timedelta64(1, 's')
+            metrics['stride_medio_s'] = float(np.mean(intervals))
+            metrics['stride_std_s'] = float(np.std(intervals))
+            
+            self.logger.info(
+                f"Processing complete: {len(peaks)} steps. Mean Stride: {metrics['stride_medio_s']:.2f}s"
+            )
+
+        return df, metrics, peaks
     
-    # 6. Extracción de métricas y contexto geográfico
-    metrics = {
-        'pasos_detectados': len(peaks),
-        'stride_medio_s': 0.0,
-        'eje_vertical_utilizado': v_axis,            
-        'posicion_gps': "No disponible" # Valor por defecto
-    }
-    if 'lat' in df.columns and 'lng' in df.columns:
-        lat = df['lat'].iloc[0]
-        lng = df['lng'].iloc[0]
-        metrics['posicion_gps'] = f"{lat}, {lng}"
-
-
-    if len(peaks) > 1:
-            tiempos_pasos = df['_time'].iloc[peaks].values
-            metrics['stride_medio_s'] = np.mean(np.diff(tiempos_pasos) / np.timedelta64(1, 's'))
-
-    return df, metrics, peaks
