@@ -1,22 +1,26 @@
-[project]
-name = "2026-msfeat-tea"
-version = "0.1.0"
-description = ""
-authors = [
-    {name = "teresaestevanautran1-cmd",email = "teresaestevanautran1@gmail.com"}
-]
+[tool.poetry]
+name = "gait-analysis-tfg"
+version = "0.2.0"
+description = "Pipeline profesional para el análisis biomecánico de señales de marcha"
+authors = ["Teresa Estevan Autrán"]
 readme = "README.md"
-requires-python = "^3.12"
-dependencies = [
-    "pandas (>=3.0.1,<4.0.0)",
-    "numpy (>=2.4.2,<3.0.0)",
-    "matplotlib (>=3.10.8,<4.0.0)",
-    "scipy (>=1.17.0,<2.0.0)",
-    "pydantic (>=2.12.5,<3.0.0)",
-    "pyyaml (>=6.0.3,<7.0.0)"
+packages = [
+    { include = "gait_analysis", from = "src" }
 ]
 
+[tool.poetry.dependencies]
+python = "^3.12"
+pandas = ">=2.0.0"
+numpy = ">=1.26.0"
+matplotlib = ">=3.8.0"
+scipy = ">=1.11.0"
+pydantic = ">=2.5.0"
+tables = ">=3.9.0"
+pyyaml = "^6.0.3"
+
+[tool.poetry.scripts]
+analyze-gait = "scripts.process_gait_signals:main"
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
