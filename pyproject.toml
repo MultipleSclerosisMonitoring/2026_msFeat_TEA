@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "gait-analysis-tfg"
+name = "gait_analysis"
 version = "0.2.0"
-description = "Pipeline profesional para el análisis biomecánico de señales de marcha"
+description = "Pipeline profesional para el análisis biomecánico de señales de marcha y fatiga motora"
 authors = ["Teresa Estevan Autrán"]
 readme = "README.md"
 packages = [
@@ -9,17 +9,23 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.12"
-pandas = ">=2.0.0"
-numpy = ">=1.26.0"
-matplotlib = ">=3.8.0"
-scipy = ">=1.11.0"
-pydantic = ">=2.5.0"
-tables = ">=3.9.0"
-pyyaml = "^6.0.3"
+python = ">=3.12,<3.13"
+pandas = "^2.2.0"
+numpy = "^1.26.0"
+matplotlib = "^3.8.0"
+scipy = "^1.11.0"
+pydantic = "^2.5.0"
+tables = "^3.9.0"
+pyyaml = "^6.0.1"
+influxdb-client = "^1.40.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+black = "^24.0.0"
 
 [tool.poetry.scripts]
-analyze-gait = "scripts.process_gait_signals:main"
+extract-data = "gait_analysis.cli.extract_data:main"
+analyze-gait = "gait_analysis.cli.analyze_gait:main"
 
 [build-system]
 requires = ["poetry-core"]

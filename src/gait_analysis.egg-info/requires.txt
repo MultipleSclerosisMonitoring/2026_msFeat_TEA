@@ -1,5 +1,0 @@
-pandas
-pydantic
-influxdb-client
-tables
-pyyaml

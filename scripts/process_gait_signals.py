@@ -12,8 +12,6 @@ Componentes del Sistema:
     - DSP Engine: Integración con GaitDataProcessor para análisis cinemático.
     - Persistencia: Generación de artefactos científicos (PNG, CSV).
 
-Autor: Teresa Estevan Autrán
-Versión: 5.0.0
 """
 
 import yaml

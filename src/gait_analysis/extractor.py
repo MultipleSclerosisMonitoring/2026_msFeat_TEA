@@ -1,171 +1,189 @@
+"""
+Módulo de Extracción y Persistencia de Datos Biomecánicos (InfluxDB -> HDF5).
+
+Este módulo implementa un motor de extracción masiva que garantiza la integridad
+de las series temporales, gestiona la internacionalización de logs y centraliza
+el almacenamiento en contenedores jerárquicos de alto rendimiento.
+
+"""
+
+import logging
 import pandas as pd
 import yaml
-import urllib3
-import os
-from typing import Dict, Any
 from pathlib import Path
-from pydantic import BaseModel, Field
+from typing import Dict, Any, List, Final, Optional
 from influxdb_client import InfluxDBClient
+from pydantic import BaseModel, Field
+
+# --- DICCIONARIO DE INTERNACIONALIZACIÓN (i18n) ---
+TRANSLATIONS: Final = {
+    'es': {
+        'start_batch': "--- Iniciando extracción para test: {test} ---",
+        'records_found': "Registros identificados: {n}",
+        'save_ok': "[+] {id} persistido en HDF5 -> {key}",
+        'no_data': "[-] {id}: El rango temporal no devolvió registros.",
+        'err_query': "[!] Error en consulta Flux para {id}: {e}",
+        'err_schema': "[!] {id} rechazado: Faltan señales críticas (S0/_time).",
+        'err_config': "Configuración de InfluxDB no hallada: {path}"
+    },
+    'en': {
+        'start_batch': "--- Starting batch extraction for test: {test} ---",
+        'records_found': "Identified records: {n}",
+        'save_ok': "[+] {id} persisted in HDF5 -> {key}",
+        'no_data': "[-] {id}: Time range returned no records.",
+        'err_query': "[!] Flux query error for {id}: {e}",
+        'err_schema': "[!] {id} rejected: Critical signals missing (S0/_time).",
+        'err_config': "InfluxDB configuration not found: {path}"
+    }
+}
 
 class InfluxConfig(BaseModel):
-    """Esquema de validación para la configuración de InfluxDB.
+    """Esquema de validación para parámetros de conexión a InfluxDB v2."""
+    url: str
+    token: str
+    org: str
+    bucket: str
 
-    Utiliza Pydantic para asegurar que el archivo YAML contenga todos los campos
-    necesarios con el formato correcto antes de iniciar la conexión.
-
-    Attributes:
-        url (str): Dirección del servidor InfluxDB.
-        token (str): Token de autenticación (se trata como cadena sensible).
-        org (str): Organización dentro de InfluxDB.
-        bucket (str): Nombre del bucket de datos.
-    """
-    url: str = Field(..., description="URL del servidor InfluxDB")
-    token: str = Field(..., description="Token de acceso")
-    org: str = Field(..., description="Nombre de la organización")
-    bucket: str = Field(..., description="Bucket de datos")
+def get_text(key: str, lang: str = 'es', **kwargs) -> str:
+    """Helper para la recuperación de literales multi-idioma."""
+    return TRANSLATIONS.get(lang, TRANSLATIONS['es']).get(key, key).format(**kwargs)
 
 class GaitDataExtractor:
-    """Clase para la extracción masiva y tipada de datos biomecánicos.
-
-    Se encarga de gestionar la conexión con InfluxDB, validar la configuración
-    y de exportar los datos a formato jerárquico HDF5 para optimizar el almacenamiento masivo.
-
-    Attributes:
-        __out_dir (str): Ruta absoluta al directorio de salida.
-        __client (InfluxDBClient): Cliente de conexión a la base de datos.
-        __bucket (str): Nombre del bucket origen de los datos.
     """
-    def __init__(self, config_file: str = "config_db.yaml", output_folder: str = 'data/raw') -> None:
-        """Inicializa el extractor con validación de rutas y configuración.
+    Motor de extracción masiva con validación de esquema y gestión de persistencia.
+    """
 
-        Args:
-            config_file (str): Nombre del archivo YAML de configuración.
-            output_folder (str): Carpeta relativa donde se guardarán los resultados.
-
-        Raises:
-            FileNotFoundError: Si no se encuentra el archivo de configuración.
-            ValidationError: Si el archivo YAML no cumple con el esquema InfluxConfig.
+    def __init__(
+        self,
+        db_config_file: str = "config/config_db.yaml",
+        output_h5: str | Path = "data/raw/gait_study_data.h5",
+        lang: str = "es",
+        verbose: int = 1,
+    ):
         """
-        base_path = os.path.dirname(os.path.abspath(__file__))
+        Inicializa el cliente de InfluxDB y valida el entorno de salida.
+        """
+        self.lang = lang
+        self.verbose = verbose
+        self.logger = self._setup_logging()
         
-        # Atributo privado: Directorio de salida configurable
-        self._out_dir = os.path.join(base_path, '..', '..', output_folder)
-        os.makedirs(self._out_dir, exist_ok=True)
+        # Resolución de rutas mediante Pathlib
+        self.base_dir = Path(__file__).resolve().parents[3]
+        
+        # Ruta de salida HDF5 configurable
+        output_h5_path = Path(output_h5)
+        if not output_h5_path.is_absolute():
+            output_h5_path = self.base_dir / output_h5_path
+        output_h5_path.parent.mkdir(parents=True, exist_ok=True)
+        self.h5_database = output_h5_path
 
-        # DEFINIR LA RUTA DEL ARCHIVO HDF5
-        # Este será el único archivo que contendrá TODOS los datos organizados
-        self._h5_database: str = os.path.join(self._out_dir, "gait_study_data.h5")
+        # Ruta del YAML de conexión configurable
+        config_path = Path(db_config_file)
+        if not config_path.is_absolute():
+            config_path = self.base_dir / config_path
 
+        if not config_path.exists():
+            raise FileNotFoundError(get_text("err_config", self.lang, path=config_path))
+            
+        with open(config_path, "r", encoding="utf-8") as f:
+            raw_config = yaml.safe_load(f)
 
-        # Carga de configuración privada
-        config_path = os.path.join(base_path, '..','..', "InfluxDBms", config_file)
-        raw_config = self._load_config(config_path)
-
-        validated_config = InfluxConfig(**raw_config['influxdb'])
-        # Cliente InfluxDB encapsulado (Atributo privado)
+        v_config = InfluxConfig(**raw_config["influxdb"])
+        
         self._client = InfluxDBClient(
-            url=validated_config.url,
-            token=validated_config.token,
-            org=validated_config.org,
-            timeout=30000,
+            url=v_config.url,
+            token=v_config.token,
+            org=v_config.org,
+            timeout=60000, # Aumentado para extracciones pesadas
             verify_ssl=False
         )
-        self._bucket = validated_config.bucket
+        self._bucket = v_config.bucket
 
-    def _load_config(self, config_path: str) -> Dict[str, Any]:
-        """Carga y parsea el archivo de configuración YAML.
+    def _setup_logging(self) -> logging.Logger:
+        """Configura el nivel de trazabilidad basado en el parámetro verbose."""
+        levels = {0: logging.ERROR, 1: logging.INFO, 2: logging.DEBUG}
+        level = levels.get(self.verbose, logging.INFO)
+        logging.basicConfig(level=level, format='%(asctime)s - [%(levelname)s] - %(message)s', datefmt='%H:%M:%S')
+        return logging.getLogger(__name__)
 
-        Args:
-            config_path (str): Ruta absoluta al archivo YAML.
-
-        Returns:
-            Dict[str, Any]: Contenido del archivo YAML como diccionario.
-
-        Raises:
-            FileNotFoundError: Si la ruta especificada no existe.
+    def _validate_extracted_data(self, df: pd.DataFrame) -> bool:
         """
-        if not os.path.exists(config_path):
-            raise FileNotFoundError(f"Configuración no encontrada en: {config_path}")
-        with open(config_path, 'r') as f:
-            return yaml.safe_load(f)
-
-    def run_batch_extraction(self, csv_path: str = 'tests.csv', test_type: str = '6MWT') -> None:
-        """Ejecuta el proceso de extracción para todos los pacientes que coincidan con el test.
-
-        Args:
-            csv_path (str): Ruta al CSV que contiene el registro de pacientes.
-            test_type (str): Código del test (ej. '6MWT') para filtrar la extracción.
-
-        Returns:
-            None
+        Verifica que el DataFrame contenga las señales mínimas antes de persistir.
         """
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        full_csv_path = os.path.join(base_path, '..', '..', csv_path)
-        
-        if not os.path.exists(full_csv_path):
-            print(f"ERROR: No se encuentra el registro {full_csv_path}")
+        required = {'_time', 'S0'}
+        return required.issubset(df.columns)
+    
+    def run_batch_extraction(
+        self,
+        csv_filepath: str | Path = "tests.csv",
+        test_type: str = "6MWT",
+    ) -> None:
+        """Ejecuta el pipeline de extracción masiva definido en el registro CSV."""
+        csv_path = Path(csv_filepath)
+        if not csv_path.is_absolute():
+            csv_path = self.base_dir / csv_path
+
+        if not csv_path.exists():
+            self.logger.error(f"Registro CSV no encontrado: {csv_path}")
             return
 
-        df_registry = pd.read_csv(full_csv_path)
-        # Filtrado dinámico según el parámetro test_type
-        subset = df_registry[df_registry['t_code'] == test_type]
-        
-        print(f"--- Iniciando extracción para test: {test_type} ---")
-        print(f"Registros encontrados: {len(subset)}")
-        
+        df_registry = pd.read_csv(csv_path)
+        subset = df_registry[df_registry["t_code"] == test_type]
+
+        self.logger.info(get_text("start_batch", self.lang, test=test_type))
+        self.logger.info(get_text("records_found", self.lang, n=len(subset)))
+
         for idx, row in subset.iterrows():
             self._extract_patient_data(row, idx, test_type)
 
     def _extract_patient_data(self, row: pd.Series, idx: int, test_type: str) -> None:
-        """Consulta InfluxDB y almacena los datos en el archivo jerárquico HDF5.
-
-        Este método es privado y gestiona la lógica de la consulta Flux y el 
-        formateo final de los datos para análisis posterior.
-
-        Args:
-            row (pd.Series): Fila con 'codeid', 'd_from' y 'd_until'.
-            idx (int): Índice secuencial para el nombre del archivo.
-            test_type (str): Tipo de prueba realizada.
-
-        Returns:
-            None
-        """
-        p_id: str = str(row['codeid'])
+        """Consulta Flux, normalización y almacenamiento HDF5."""
+        p_id = str(row['codeid'])
         
-        # Conversión de fechas a formato ISO 8601 para InfluxDB
-        start_iso = pd.to_datetime(row['d_from']).tz_convert('UTC').strftime('%Y-%m-%dT%H:%M:%SZ')
-        stop_iso = pd.to_datetime(row['d_until']).tz_convert('UTC').strftime('%Y-%m-%dT%H:%M:%SZ')
+        # Gestión robusta de zonas horarias
+        start_dt = pd.to_datetime(row['d_from'])
+        stop_dt = pd.to_datetime(row['d_until'])
         
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.tz_localize('UTC')
+            stop_dt = stop_dt.tz_localize('UTC')
+        
+        start_iso = start_dt.isoformat()
+        stop_iso = stop_dt.isoformat()
+
+        # Query optimizada: Conservamos lat/lng para el análisis biomecánico
         query = f'''
         from(bucket: "{self._bucket}")
           |> range(start: {start_iso}, stop: {stop_iso})
           |> filter(fn: (r) => r["_measurement"] == "Gait")
           |> filter(fn: (r) => r["CodeID"] == "{p_id}")
           |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-          |> drop(columns: ["_start", "_stop", "_measurement", "result", "table", "CodeID", 
-                            "DeviceName", "Foot", "app", "lat", "lng", "mac", "type"])
+          |> drop(columns: ["_start", "_stop", "_measurement", "result", "table", "CodeID", "app", "mac"])
         '''
-        
+
         try:
             df = self._client.query_api().query_data_frame(query)
             
             if isinstance(df, pd.DataFrame) and not df.empty:
+                # 1. Validación de esquema
+                if not self._validate_extracted_data(df):
+                    self.logger.error(get_text('err_schema', self.lang, id=p_id))
+                    return
+
+                # 2. Normalización de tiempo (Eliminamos zona horaria para compatibilidad HDF5)
                 df["_time"] = df["_time"].dt.tz_localize(None)
                 
-                # Crear la ruta gerárquica 
-                hdf_key: str = f"p_{p_id}/{test_type}/trial_{idx}"
+                # 3. Persistencia Jerárquica
+                h_key = f"p_{p_id}/{test_type}/trial_{idx}"
+                df.to_hdf(self.h5_database, key=h_key, mode='a', format='table', data_columns=True)
                 
-                # Guardar en el almacén HDF5
-                # 'append=False' para sobreescribir si el intento es el mismo
-                df.to_hdf(self._h5_database, key=hdf_key, mode='a', format='table')
-
-                print(f"  [+] {p_id} guardado en HDF5: {hdf_key}")
+                self.logger.info(get_text('save_ok', self.lang, id=p_id, key=h_key))
             else:
-                print(f"  [-] {p_id}: Sin datos en el rango {start_iso}")
+                self.logger.warning(get_text('no_data', self.lang, id=p_id))
                 
         except Exception as e:
-            print(f"  [!] Error consultando {p_id}: {e}")
+            self.logger.error(get_text('err_query', self.lang, id=p_id, e=str(e)))
 
     def close(self):
-        """Cierra de forma segura la conexión con el cliente de InfluxDB."""
+        """Finaliza la conexión con el servidor InfluxDB."""
         self._client.close()

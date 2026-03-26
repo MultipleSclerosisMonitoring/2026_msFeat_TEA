@@ -6,9 +6,6 @@ con soporte para parametrización de tests, CSV de registro, idioma y verbose.
 
 Uso:
     python scripts/batch_extractor.py --test 6MWT --csv tests.csv --lang es --verbose 2
-
-Autor: Teresa Estevan Autrán
-Versión: 4.0.0
 """
 
 import argparse

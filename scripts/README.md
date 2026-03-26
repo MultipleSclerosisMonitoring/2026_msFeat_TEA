@@ -1,73 +1,44 @@
-# Execution Scripts & Entry Points
+# CLI Scripts and Execution Entry Points
 
-This directory contains the executable scripts designed to interface with the `gait_analysis` core package. These tools automate the data lifecycle, from cloud retrieval to local hierarchical storage.
+Este directorio contiene las herramientas de línea de comandos (CLI) diseñadas para interactuar con el paquete núcleo `gait_analysis`. Estos scripts automatizan el ciclo de vida completo de los datos: desde la recuperación en la nube hasta el almacenamiento jerárquico y el análisis biomecánico final.
 
-## Technical Specifications
-- **Language**: Python 3.12
-- **Core Engine**: Integrated with `src.gait_analysis` module.
-- **Validation**: Pydantic v2 (Strict schema validation for database connectivity).
-- **Persistence**: HDF5 (Hierarchical Data Format) for high-performance biomechanical data management.
+## Especificaciones Técnicas
+- **Lenguaje**: Python 3.12 (Estrictamente requerido).
+- **Gestión de Dependencias**: Integrado con **Poetry** para una resolución de entorno determinista.
+- **Motor Central**: Desacoplado, importando lógica desde el módulo `src/gait_analysis`.
+- **Persistencia de Datos**: Gestión de alto rendimiento mediante HDF5 (Hierarchical Data Format).
 
-## Script Catalog
+---
+
+## Catálogo de Scripts
 
 ### 1. `batch_extractor.py`
-A professional-grade CLI tool for mass extraction of high-frequency gait signals from InfluxDB.
-- **Hierarchical Storage**: Implements the HDF5 structure: `p_[SubjectID] > [TestType] > trial_[Index]`. This replaces legacy Excel formats to optimize I/O operations.
-- **Robust Validation**: Leverages the `InfluxConfig` Pydantic model to validate YAML credentials before initiating network requests.
-- **Environment Sync**: Handles automatic conversion between Clinical Local Time (CET/CEST) and Database UTC (ISO 8601).
-- **CLI Parameterization**: Fully configurable via `argparse` for flexible batch processing.
+Herramienta profesional para la extracción masiva de señales de marcha de alta frecuencia desde InfluxDB.
+- **Almacenamiento Jerárquico**: Implementa la estructura HDF5: `p_[ID_Sujeto] > [Tipo_Test] > trial_[Indice]`, optimizando las operaciones de E/S.
+- **i18n & Verbose**: Soporta logs multilingües y niveles de detalle configurables vía CLI.
+- **Sincronización Temporal**: Maneja automáticamente la conversión entre el tiempo clínico local y el UTC de la base de datos (ISO 8601).
 
-<<<<<<< HEAD
-### 2. `process_gait_signals.py` (In Development)
-Module dedicated to digital signal processing, including:
-- Butterworth filtering for noise reduction.
-- Gyroscope-based turn detection.
-- Gait event identification (Heel Strike / Toe Off).
-=======
 ### 2. `batch_process_all.py` 
-The main analysis engine for mass processing of the local HDF5 database.
-- **Workflow**: Iterates through all trials, applies the DSP pipeline, and exports results.
-- **Auto-Calibration**: Automatically detects the vertical axis (Ax, Ay, or Az) for each trial.
-- **Visual Audit**: Generates a validation plot for every trial in `reports/plots/`.
-- **Data Consolidation**: Aggregates all biomechanical features into `reports/summary_metrics.csv`.
+El motor principal para el procesamiento por lotes de la base de datos local HDF5.
+- **Autocalibración**: Detecta dinámicamente el eje vertical de cada ensayo mediante análisis gravitatorio.
+- **Auditoría Visual**: Genera un gráfico de validación para cada ensayo en `reports/plots/` para verificación clínica.
+- **Consolidación**: Agrega todas las características biomecánicas (Mean Stride, STD, etc.) en `reports/summary_metrics.csv`.
 
 ### 3. `process_gait_signals.py`
-Unit testing and debugging tool for the processing pipeline.
-- **Purpose**: Used to fine-tune filters and peak detection parameters on a single specific trial before running a full batch.
->>>>>>> origin/master
+Herramienta de pruebas unitarias y depuración del pipeline de procesamiento.
+- **Propósito**: Utilizado para ajustar filtros, frecuencias de corte y parámetros de detección de picos en un ensayo específico antes de ejecutar el análisis masivo.
 
-## Usage
-To ensure correct module resolution, these scripts must be executed from the **project root** directory.
+---
 
-### 1. Environment Setup
-Activate your virtual environment and ensure the local package is installed:
+## Guía de Ejecución
+
+Para garantizar la correcta resolución de módulos y la carga de configuraciones, estos scripts **deben ejecutarse siempre desde el directorio raíz del proyecto** utilizando Poetry.
+
+### 1. Extracción de Datos (Cloud a Local)
+Descarga los ensayos clínicos desde InfluxDB:
 ```powershell
-# Activate environment (Windows)
-.\.venv\Scripts\activate
+# Ejecución estándar (6MWT)
+python -m poetry run python scripts/batch_extractor.py
 
-# Install the project in editable mode (CRUCIAL for scripts to work)
-pip install -e . 
-```
-
-### 2. Running Extraction
-You can run the extractor using default values or custom parameters:
-```powershell
-# Run with default settings (6MWT)
-python scripts/batch_extractor.py
-
-# Custom execution for specific tests
-python scripts/batch_extractor.py --test TUG --csv tests.csv --out data/raw
-
-# View all available options
-python scripts/batch_extractor.py --help
-<<<<<<< HEAD
-```
-=======
-```
-
-### 2. Running Mass Processing & Analysis
-```powershell
-    # Run the complete analysis batch
-    python scripts/batch_process_all.py
-```
->>>>>>> origin/master
+# Ejecución personalizada (ej. Test TUG en inglés con Debug activado)
+python -m poetry run python scripts/batch_extractor.py --test TUG --lang en --verbose 2

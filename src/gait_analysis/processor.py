@@ -9,8 +9,6 @@ stride time variability.
 The architecture ensures hardware-agnostic processing by implementing 
 gravity-based orientation detection and pydantic-validated configuration.
 
-Author: Teresa Estevan Autrán
-Version: 5.1.0
 """
 
 import logging
@@ -230,4 +228,23 @@ class GaitDataProcessor:
             )
 
         return df, metrics, peaks
+def main():
+    """
+    Punto de entrada para el comando CLI 'analyze-gait'.
     
+    Inicializa el procesador con la configuración por defecto y 
+    sirve como demostración de la integridad del paquete.
+    """
+    logging.basicConfig(level=logging.INFO)
+    logger.info("Iniciando motor biomecánico gait-analysis-tfg...")
+    
+    try:
+        processor = GaitDataProcessor()
+        logger.info("Procesador instanciado correctamente. Listo para análisis masivo.")
+        # Aquí podrías añadir una pequeña prueba de carga de un CSV si quisieras
+    except Exception as e:
+        logger.error(f"Error al iniciar el motor: {e}")
+
+if __name__ == "__main__":
+    main()
+      

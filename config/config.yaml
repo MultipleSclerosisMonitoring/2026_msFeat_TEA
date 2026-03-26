@@ -1,0 +1,25 @@
+project:
+  language: "es"
+  verbose: 1
+
+paths:
+  h5_path: "data/raw/gait_study_data.h5"
+  registry_csv: "tests.csv"
+  output_metrics: "reports/data/metrics_summary.csv"
+  output_plot: "reports/plots/analisis_config.png"
+  plots_dir: "reports/plots"
+
+processing:
+  fs: 100.0
+  cutoff_pressure: 5.0
+  cutoff_gyro: 2.0
+  gyro_threshold: 50.0
+  min_peak_distance: 50
+  min_peak_height: 0.2
+
+batch:
+  test_type: "6MWT"
+  generate_plots: true
+
+hdf5:
+  default_key: "p_000/6MWT/trial_0"
