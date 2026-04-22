@@ -13,7 +13,7 @@ processing:
   cutoff_pressure: 5.0
   cutoff_gyro: 2.0
   gyro_threshold: 50.0
-  min_peak_distance_s: 0.5
+  min_peak_distance: 50
   min_peak_height: 0.2
 
 batch:
@@ -21,10 +21,10 @@ batch:
   generate_plots: true
 
 analysis:
-  h5_key: "p_RHRHUG004-1/6MWT/trial_28"
+  h5_key: "p_EXAMPLE_SUBJECT/6MWT/trial_0"
 
 influxdb:
-  bucket: "Gait/autogen"
-  org: "UPM"
-  token: ${INFLUXDB_TOKEN}
-  url: "https://138.100.82.178:8086"
+  url: "https://YOUR_INFLUX_HOST:8086"
+  org: "YOUR_ORG"
+  bucket: "YOUR_BUCKET"
+  token: "YOUR_INFLUXDB_TOKEN"

@@ -1,250 +1,452 @@
 """
 Digital Signal Processing (DSP) Module for Human Gait Analysis.
 
-This module provides high-level abstractions for processing inertial and 
-pressure sensor data. It focuses on zero-phase digital filtering, 
-automated spatial calibration, and clinical metric extraction such as 
-stride time variability.
+This module implements a deterministic pipeline for extracting
+spatiotemporal gait features from wearable sensor data.
 
-The architecture ensures hardware-agnostic processing by implementing 
-gravity-based orientation detection and pydantic-validated configuration.
+The design follows a research-oriented approach:
+- Zero-phase filtering (Butterworth)
+- Automatic spatial calibration (gravity-based)
+- Event detection (Heel Strikes)
+- Temporal and variability feature extraction
+- Temporal trend estimation for fatigue-sensitive metrics
+
+The output aligns with clinically relevant gait metrics and
+provides a foundation for fatigue analysis.
 
 """
 
 import logging
 import numpy as np
 import pandas as pd
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Dict, Any, Tuple, Optional
 from scipy.signal import butter, filtfilt, find_peaks
 from pydantic import BaseModel, Field
 
-# Local module logger
 logger = logging.getLogger(__name__)
+
 
 class ProcessConfig(BaseModel):
     """
     Configuration schema for gait signal processing parameters.
 
-    Validated via Pydantic v2 to ensure strict typing and range constraints 
-    on DSP hyperparameters.
-
     Attributes
     ----------
     fs : float
-        Sampling frequency in Hz. Must be positive.
+        Sampling frequency in Hz.
     cutoff_pressure : float
-        Low-pass cutoff frequency for pressure sensors (S0) in Hz.
+        Low-pass cutoff frequency for plantar pressure signal.
     cutoff_gyro : float
-        Low-pass cutoff frequency for gyroscope signals (Gz) in Hz.
+        Low-pass cutoff frequency for gyroscope signal.
     gyro_threshold : float
-        Angular velocity threshold (°/s) to trigger turn detection.
+        Threshold to detect turning phases.
     min_peak_distance : int
-        Minimum number of samples between consecutive Heel Strikes.
+        Minimum distance between detected peaks (samples).
     min_peak_height : float
-        Normalized amplitude threshold for peak detection on S0.
+        Minimum normalized amplitude for peak detection.
     """
+
     fs: float = Field(default=100.0, ge=0.1)
     cutoff_pressure: float = Field(default=5.0, ge=0.1)
     cutoff_gyro: float = Field(default=2.0, ge=0.1)
     gyro_threshold: float = Field(default=50.0)
-    min_peak_distance: int = Field(default=50)
+    min_peak_distance_s: float = Field(default=0.5, ge=0.05)
     min_peak_height: float = Field(default=0.2)
 
 
 class GaitDataProcessor:
     """
-    Main engine for biomechanical signal decomposition and event detection.
+    Core processing engine for gait signal analysis.
 
-    Provides a robust pipeline for transforming raw sensor telemetry into 
-    validated gait cycles. Includes automated vertical axis detection and 
-    steady-state walking segmentation.
+    This class transforms raw sensor data into clinically relevant
+    spatiotemporal features and variability metrics.
+
+    Pipeline stages
+    ---------------
+    1. Temporal alignment
+    2. Signal filtering
+    3. Turn segmentation
+    4. Event detection (Heel Strikes)
+    5. Temporal, variability, and trend feature extraction
 
     Parameters
     ----------
-    config : Optional[ProcessConfig], default=None
-        Injected configuration object. If None, default values are used.
-
-    Attributes
-    ----------
-    config : ProcessConfig
-        The active configuration schema for the processor instance.
-    logger : logging.Logger
-        Scoped logger for tracking DSP events and warnings.
+    config : ProcessConfig, optional
+        Processing configuration. If omitted, default values are used.
     """
 
     def __init__(self, config: Optional[ProcessConfig] = None):
-        """Initialize the processor with validated configuration."""
         self.config = config or ProcessConfig()
         self.logger = logging.getLogger(__name__)
 
     def _autodetect_vertical_axis(self, df: pd.DataFrame) -> str:
         """
-        Identify the vertical axis based on gravitational component analysis.
-
-        Assumes that the axis with the highest absolute mean acceleration 
-        represents the primary vertical vector (gravity) during steady-state 
-        or static periods.
+        Detect the vertical inertial axis using gravity magnitude.
 
         Parameters
         ----------
         df : pd.DataFrame
-            Input dataframe containing at least 'Ax', 'Ay', 'Az' columns.
+            Input dataframe containing inertial acceleration axes.
 
         Returns
         -------
         str
-            The label of the detected vertical axis (e.g., 'Az').
+            Detected vertical axis label ("Ax", "Ay", or "Az").
         """
-        axes = ['Ax', 'Ay', 'Az']
+        axes = ["Ax", "Ay", "Az"]
         available_axes = [ax for ax in axes if ax in df.columns]
-        
+
         if not available_axes:
             self.logger.warning("Inertial axes missing. Defaulting to 'Az'.")
-            return 'Az'
+            return "Az"
 
-        # Eje con mayor magnitud constante (Gravedad)
         means = df[available_axes].abs().mean()
-        detected_axis = means.idxmax()
-        
-        self.logger.debug(f"Gravity analysis results: {means.to_dict()}")
-        self.logger.info(f"Spatial autocalibration successful. Vertical axis: {detected_axis}")
-        
-        return detected_axis
+        axis = means.idxmax()
+
+        self.logger.debug(f"Gravity mean magnitudes: {means.to_dict()}")
+        self.logger.info(f"Spatial autocalibration successful. Vertical axis: {axis}")
+        return axis
 
     def _butter_lowpass_filter(self, data: np.ndarray, cutoff: float) -> np.ndarray:
         """
-        Apply a 4th-order zero-phase Butterworth low-pass filter.
-
-        Uses filtfilt to ensure zero phase distortion, which is critical for 
-        maintaining the temporal alignment of biomechanical events.
+        Apply zero-phase Butterworth low-pass filtering.
 
         Parameters
         ----------
         data : np.ndarray
-            1D array of raw sensor telemetry.
+            Raw 1D signal.
         cutoff : float
             Cutoff frequency in Hz.
 
         Returns
--------
+        -------
         np.ndarray
-            Smoothed signal with high-frequency artifacts removed.
+            Filtered signal.
         """
         nyq = 0.5 * self.config.fs
         normal_cutoff = cutoff / nyq
-        b, a = butter(N=4, Wn=normal_cutoff, btype='low', analog=False)
+        b, a = butter(4, normal_cutoff, btype="low")
         return filtfilt(b, a, data)
-
-    def process_signals(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any], np.ndarray]:
+    
+    def _estimate_sampling_frequency(self, df: pd.DataFrame) -> float:
         """
-        Execute the full analysis pipeline on a gait trial.
-
-        The pipeline follows a deterministic sequence:
-        1. Temporal sorting and datetime conversion.
-        2. Orientation autodetection via gravity vectors.
-        3. Zero-phase digital filtering of pressure and rotational signals.
-        4. Spatial segmentation (exclusion of turning phases).
-        5. Heuristic event detection (Heel Strikes) and metric calculation.
+        Estimate the effective sampling frequency from timestamps.
 
         Parameters
         ----------
         df : pd.DataFrame
-            Raw dataset containing '_time', 'S0', 'Gz', and IMU axes.
+            Input dataframe containing the '_time' column.
 
         Returns
         -------
-        df_proc : pd.DataFrame
-            Enriched dataframe with filtered signals and masks.
-        metrics : Dict[str, Any]
-            Dictionary containing 'pasos_detectados', 'stride_medio_s', 
-            'stride_std_s', and 'posicion_gps'.
-        peaks : np.ndarray
-            Array of indices identifying the detected Heel Strike events.
+        float
+            Estimated sampling frequency in Hz based on mean inter-sample interval.
 
         Raises
         ------
         ValueError
-            If 'S0' or '_time' columns are missing from the input dataframe.
+            If the dataframe does not contain enough valid timestamps.
+        """
+        if "_time" not in df.columns or len(df) < 2:
+            raise ValueError("Cannot estimate sampling frequency without at least two timestamps.")
+
+        time_seconds = (
+            (pd.to_datetime(df["_time"]) - pd.to_datetime(df["_time"]).iloc[0])
+            / np.timedelta64(1, "s")
+        ).astype(float).to_numpy()
+
+        dt = np.diff(time_seconds)
+        dt = dt[dt > 0]
+
+        if len(dt) == 0:
+            raise ValueError("Invalid timestamps: non-positive time differences only.")
+
+        fs_est = 1.0 / np.mean(dt)
+        return float(fs_est)
+
+    def _resample_to_uniform_timebase(self, df: pd.DataFrame, target_fs: float) -> pd.DataFrame:
+        """
+        Resample the dataframe to a uniform time base using linear interpolation.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Input dataframe with irregular timestamps.
+        target_fs : float
+            Target resampling frequency in Hz.
+
+        Returns
+        -------
+        pd.DataFrame
+            Resampled dataframe with uniform timestamps.
+        """
+        t0 = pd.to_datetime(df["_time"]).iloc[0]
+        time_original = (
+            (pd.to_datetime(df["_time"]) - t0) / np.timedelta64(1, "s")
+        ).astype(float).to_numpy()
+
+        duration = time_original[-1]
+        dt_uniform = 1.0 / target_fs
+        time_uniform = np.arange(0.0, duration, dt_uniform)
+
+        df_resampled = pd.DataFrame({
+            "_time": t0 + pd.to_timedelta(time_uniform, unit="s")
+        })
+
+        candidate_columns = [col for col in df.columns if col != "_time"]
+
+        for col in candidate_columns:
+            series = pd.to_numeric(df[col], errors="coerce")
+            valid = series.notna().to_numpy()
+
+            if np.sum(valid) < 2:
+                continue
+
+            df_resampled[col] = np.interp(
+                time_uniform,
+                time_original[valid],
+                series.to_numpy()[valid]
+            )
+
+        return df_resampled
+
+    def _safe_linear_slope(self, values: np.ndarray) -> float:
+        """
+        Compute the linear slope of a sequence using first-order polynomial fit.
+
+        Parameters
+        ----------
+        values : np.ndarray
+            One-dimensional numeric array.
+
+        Returns
+        -------
+        float
+            Estimated slope. Returns 0.0 if fewer than 2 samples are available.
+        """
+        if len(values) < 2:
+            return 0.0
+
+        x = np.arange(len(values), dtype=float)
+        slope = np.polyfit(x, values.astype(float), 1)[0]
+        return float(slope)
+
+    def _safe_cv(self, values: np.ndarray) -> float:
+        """
+        Compute coefficient of variation safely.
+
+        Parameters
+        ----------
+        values : np.ndarray
+            Numeric values.
+
+        Returns
+        -------
+        float
+            Standard deviation divided by mean, or 0.0 if mean is zero
+            or not enough values are available.
+        """
+        if len(values) < 2:
+            return 0.0
+
+        mean_val = float(np.mean(values))
+        if np.isclose(mean_val, 0.0):
+            return 0.0
+
+        return float(np.std(values) / mean_val)
+
+    def process_signals(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any], np.ndarray]:
+        """
+        Execute the full gait processing pipeline.
+
+        The method performs:
+        - chronological sorting
+        - zero-phase filtering
+        - turn masking
+        - heel strike detection
+        - extraction of temporal, variability, and trend metrics
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Raw gait dataframe. Must contain at least '_time' and 'S0'.
+
+        Returns
+        -------
+        df_proc : pd.DataFrame
+            Processed dataframe with filtered signals and turn mask.
+        metrics : Dict[str, Any]
+            Extracted gait metrics and metadata.
+        peaks : np.ndarray
+            Detected heel strike indices.
+
+        Raises
+        ------
+        ValueError
+            If required columns are missing.
         """
         self.logger.debug("Starting gait signal processing pipeline.")
 
-        if 'S0' not in df.columns or '_time' not in df.columns:
-            msg = "Data Integrity Error: 'S0' and '_time' are mandatory."
-            self.logger.error(msg)
-            raise ValueError(msg)
+        if "S0" not in df.columns or "_time" not in df.columns:
+            raise ValueError("Missing required columns: 'S0' and '_time'")
 
-        # 1. Chronological sorting
-        df = df.sort_values('_time').reset_index(drop=True)
-        df['_time'] = pd.to_datetime(df['_time'])
+        # 1. Chronological ordering
+        df = df.sort_values("_time").reset_index(drop=True)
+        df["_time"] = pd.to_datetime(df["_time"])
 
-        # 2. Calibration and Filtering
-        v_axis = self._autodetect_vertical_axis(df)
-        df['S0_filt'] = self._butter_lowpass_filter(df['S0'].values, self.config.cutoff_pressure)
-        
-        # 3. Turn Segmentation (Gz-based)
-        if 'Gz' in df.columns:
-            df['Gz_filt'] = self._butter_lowpass_filter(df['Gz'].values, self.config.cutoff_gyro)
-            df['is_turning'] = df['Gz_filt'].abs() > self.config.gyro_threshold
-        else:
-            self.logger.warning("Gz signal missing. Turn segmentation disabled.")
-            df['is_turning'] = pd.Series(False, index=df.index)
+        # Estimate real sampling frequency from timestamps
+        fs_est = self._estimate_sampling_frequency(df)
+        self.logger.info(f"Estimated raw sampling frequency: {fs_est:.2f} Hz")
 
-        # Logging granular for DSP verification
-        self.logger.debug(f"Filtered S0 head: {df['S0_filt'].head().values}")
+        # Resample to a uniform time base using the configured target frequency
+        target_fs = self.config.fs
+        self.logger.info(f"Resampling to uniform time base at {target_fs:.2f} Hz")
 
-        # 4. Heel Strike Detection
-        # Isolate steady-state walking by masking turns
-        s0_clean = df['S0_filt'].copy()
-        s0_clean[df['is_turning']] = 0 
-        
-        peaks, _ = find_peaks(
-            s0_clean, 
-            distance=self.config.min_peak_distance, 
-            height=self.config.min_peak_height
+        df = self._resample_to_uniform_timebase(df, target_fs=target_fs)
+
+        self.logger.debug(f"Resampled signal length: {len(df)} samples")
+        self.logger.debug(
+            f"Resampled duration: "
+            f"{(df['_time'].iloc[-1] - df['_time'].iloc[0]).total_seconds():.3f} s"
         )
 
-        # 5. Scientific Metric Consolidation
-        metrics = {
-            'pasos_detectados': len(peaks),
-            'stride_medio_s': 0.0,
-            'stride_std_s': 0.0,
-            'eje_vertical_utilizado': v_axis,
-            'posicion_gps': "N/A"
+        # 2. Filtering
+        v_axis = self._autodetect_vertical_axis(df)
+        df["S0_filt"] = self._butter_lowpass_filter(
+            df["S0"].values,
+            self.config.cutoff_pressure,
+        )
+
+        # 3. Turn detection
+        if "Gz" in df.columns:
+            df["Gz_filt"] = self._butter_lowpass_filter(
+                df["Gz"].values,
+                self.config.cutoff_gyro,
+            )
+            df["is_turning"] = df["Gz_filt"].abs() > self.config.gyro_threshold
+        else:
+            df["is_turning"] = False
+            self.logger.warning("Gz not found. Turn segmentation disabled.")
+
+        self.logger.debug(f"Filtered S0 preview: {df['S0_filt'].head().to_list()}")
+
+        # 4. Heel strike detection outside turning phases
+        s0_clean = df["S0_filt"].copy()
+        s0_clean[df["is_turning"]] = 0.0
+
+        min_peak_distance_samples = max(1, int(self.config.min_peak_distance_s * self.config.fs))
+        self.logger.debug(
+            f"Peak detection minimum distance: {self.config.min_peak_distance_s:.3f} s "
+            f"({min_peak_distance_samples} samples at {self.config.fs:.2f} Hz)"
+        )
+
+        peaks, properties = find_peaks(
+            s0_clean,
+            distance=min_peak_distance_samples,
+            height=self.config.min_peak_height,
+        )
+
+        self.logger.debug(f"Signal length: {len(df)} samples")
+        self.logger.debug(f"Turning samples: {df['is_turning'].sum()}")
+        
+        self.logger.info(f"Detected {len(peaks)} steps")
+        self.logger.debug(f"Peak heights preview: {properties.get('peak_heights', [])[:5]}")
+        self.logger.debug(f"Turning ratio: {df['is_turning'].sum() / len(df):.3f}")
+
+        # 5. Feature extraction
+        metrics: Dict[str, Any] = {
+            "pasos_detectados": int(len(peaks)),
+            "eje_vertical_utilizado": v_axis,
+            "posicion_gps": "N/A",
+            "walking_duration_s": 0.0,
+            "step_time_mean_s": 0.0,
+            "step_time_std_s": 0.0,
+            "step_time_cv": 0.0,
+            "cadence_spm": 0.0,
+            "stride_time_mean_s": 0.0,
+            "stride_time_std_s": 0.0,
+            "stride_time_cv": 0.0,
+            "step_time_slope": 0.0,
+            "stride_time_slope": 0.0,
+            "cadence_first_half_spm": 0.0,
+            "cadence_second_half_spm": 0.0,
+            "cadence_change_spm": 0.0,
         }
 
-        # Contextual GPS data extraction
-        if {'lat', 'lng'}.issubset(df.columns):
-            metrics['posicion_gps'] = f"{df['lat'].iloc[0]}, {df['lng'].iloc[0]}"
+        # GPS metadata
+        if {"lat", "lng"}.issubset(df.columns):
+            gps_valid = df[["lat", "lng"]].dropna()
+            if not gps_valid.empty:
+                first = gps_valid.iloc[0]
+                metrics["posicion_gps"] = {
+                    "lat": float(first["lat"]),
+                    "lng": float(first["lng"]),
+                }
+                self.logger.debug(f"GPS fix found: {metrics['posicion_gps']}")
+            else:
+                self.logger.warning("GPS columns found, but no valid lat/lng values are available.")
+        else:
+            self.logger.warning("GPS columns are missing from the extracted dataset.")
 
-        # Statistical analysis of gait cycles
+        # Temporal metrics
         if len(peaks) > 1:
-            step_times = df['_time'].iloc[peaks].values
-            intervals = np.diff(step_times) / np.timedelta64(1, 's')
-            metrics['stride_medio_s'] = float(np.mean(intervals))
-            metrics['stride_std_s'] = float(np.std(intervals))
-            
+            step_times = df["_time"].iloc[peaks].values
+            step_intervals = np.diff(step_times) / np.timedelta64(1, "s")
+            step_intervals = step_intervals.astype(float)
+
+            duration = float((df["_time"].iloc[-1] - df["_time"].iloc[0]).total_seconds())
+            metrics["walking_duration_s"] = duration
+            metrics["step_time_mean_s"] = float(np.mean(step_intervals))
+            metrics["step_time_std_s"] = float(np.std(step_intervals))
+            metrics["step_time_cv"] = self._safe_cv(step_intervals)
+
+            if duration > 0:
+                metrics["cadence_spm"] = float(len(peaks) / duration * 60.0)
+
+            # Fatigue-sensitive temporal trend
+            metrics["step_time_slope"] = self._safe_linear_slope(step_intervals)
+
+            # Stride intervals approximated as every second step interval
+            if len(step_intervals) >= 3:
+                stride_intervals = step_intervals[::2]
+                metrics["stride_time_mean_s"] = float(np.mean(stride_intervals))
+                metrics["stride_time_std_s"] = float(np.std(stride_intervals))
+                metrics["stride_time_cv"] = self._safe_cv(stride_intervals)
+                metrics["stride_time_slope"] = self._safe_linear_slope(stride_intervals)
+
+            # First-half vs second-half cadence
+            total_duration = metrics["walking_duration_s"]
+            if total_duration > 0:
+                t0 = df["_time"].iloc[0]
+                relative_step_times = (
+                    (pd.to_datetime(step_times) - t0) / np.timedelta64(1, "s")
+                ).astype(float)
+
+                half_time = total_duration / 2.0
+                first_half_steps = int(np.sum(relative_step_times < half_time))
+                second_half_steps = int(np.sum(relative_step_times >= half_time))
+
+                first_half_duration = half_time
+                second_half_duration = total_duration - half_time
+
+                if first_half_duration > 0:
+                    metrics["cadence_first_half_spm"] = float(first_half_steps / first_half_duration * 60.0)
+
+                if second_half_duration > 0:
+                    metrics["cadence_second_half_spm"] = float(second_half_steps / second_half_duration * 60.0)
+
+                metrics["cadence_change_spm"] = float(
+                    metrics["cadence_second_half_spm"] - metrics["cadence_first_half_spm"]
+                )
+
             self.logger.info(
-                f"Processing complete: {len(peaks)} steps. Mean Stride: {metrics['stride_medio_s']:.2f}s"
+                "Temporal features extracted successfully: "
+                f"step_mean={metrics['step_time_mean_s']:.3f}s, "
+                f"cadence={metrics['cadence_spm']:.1f} spm, "
+                f"step_slope={metrics['step_time_slope']:.6f}"
             )
 
-        return df, metrics, peaks
-def main():
-    """
-    Punto de entrada para el comando CLI 'analyze-gait'.
-    
-    Inicializa el procesador con la configuración por defecto y 
-    sirve como demostración de la integridad del paquete.
-    """
-    logging.basicConfig(level=logging.INFO)
-    logger.info("Iniciando motor biomecánico gait-analysis-tfg...")
-    
-    try:
-        processor = GaitDataProcessor()
-        logger.info("Procesador instanciado correctamente. Listo para análisis masivo.")
-        # Aquí podrías añadir una pequeña prueba de carga de un CSV si quisieras
-    except Exception as e:
-        logger.error(f"Error al iniciar el motor: {e}")
+        else:
+            self.logger.warning("Not enough detected steps to compute temporal gait features.")
 
-if __name__ == "__main__":
-    main()
-      
+        return df, metrics, peaks

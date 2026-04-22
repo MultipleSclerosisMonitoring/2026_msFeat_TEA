@@ -1,5 +1,5 @@
 """
-🚀 Motor de Análisis Masivo (Batch Analysis Engine) - Versión 5.1.0
+Motor de Análisis Masivo (Batch Analysis Engine) - Versión 5.1.0
 ------------------------------------------------------------------
 Analiza todos los ensayos en HDF5 aplicando el pipeline de Müller et al. (2021).
 Optimizado para rigor clínico, trazabilidad de datos y robustez de rutas.
@@ -8,6 +8,16 @@ Mejoras de rigor: Resolución de rutas híbridas, validación de contenido HDF5
 y metadatos de versión del pipeline para trazabilidad científica.
 
 Autor: Teresa Estevan Autrán (TFG 2026)
+"""
+"""
+DEPRECATED SCRIPT
+
+This script belongs to a legacy execution path and is no longer part of the
+official pipeline.
+
+Use the CLI entrypoints instead:
+    poetry run extract-data --config config/config.yaml
+    poetry run analyze-gait --config config/config.yaml
 """
 
 import pandas as pd
@@ -43,6 +53,14 @@ def load_config(config_path):
     except Exception as e:
         logging.warning(f"⚠️ No se pudo cargar {config_path}. Usando defaults. Error: {e}")
         return ProcessConfig()
+
+import warnings
+
+warnings.warn(
+    "This script is deprecated. Use the CLI entrypoints instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 def main():
     # 1. Configuración de Argumentos CLI

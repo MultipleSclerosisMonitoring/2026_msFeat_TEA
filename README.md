@@ -1,132 +1,135 @@
-# TFG: Framework para el Análisis Masivo de Biomarcadores Digitales de Marcha
+# MS-Feat: A Modular Framework for Gait Analysis
 
-## Descripción del Proyecto
+## Overview
 
-Este proyecto implementa un **pipeline batch para el análisis de la marcha** a partir de sensores wearables (IMU y presión plantar), con el objetivo de extraer **parámetros biomecánicos clínicamente relevantes** y estimar **fatiga motora**.
+MS-Feat is a modular batch-processing framework for gait analysis based on wearable sensors (IMU and plantar pressure). The system is designed to extract clinically relevant biomechanical parameters and estimate motor fatigue from walking tests.
 
-El sistema está orientado a la investigación en **Esclerosis Múltiple (EM)**, permitiendo transformar grandes volúmenes de datos de sensores en **indicadores objetivos de movilidad**, siguiendo la línea metodológica de Müller et al. (2021).
-
----
-
-## Objetivos
-
-* Extracción de datos de alta frecuencia desde InfluxDB
-* Procesamiento de señales inerciales y de presión
-* Detección de eventos de marcha (Heel Strike, Toe Off)
-* Cálculo de parámetros espaciotemporales de la marcha
-* Estimación de fatiga mediante tendencias lineales (slope)
-* Ejecución batch reproducible para múltiples ensayos
+The framework is oriented towards research in neurological conditions such as Multiple Sclerosis (MS), enabling the transformation of large-scale sensor data into objective mobility indicators.
 
 ---
 
-## Arquitectura del Sistema
+## Objectives
 
-El proyecto sigue una arquitectura modular basada en capas:
-
-1. **Capa de Adquisición (Cloud-to-Local)**
-   Extracción masiva desde InfluxDB con validación de esquemas mediante Pydantic.
-
-2. **Capa de Persistencia (HDF5)**
-   Almacenamiento eficiente de series temporales de alta frecuencia.
-
-3. **Capa de Procesamiento (DSP Core)**
-   Filtrado, calibración, segmentación y análisis de señales de marcha.
-
-4. **Capa de Análisis Clínico**
-   Cálculo de parámetros biomecánicos y métricas de fatiga.
-
-5. **Capa de Reporte**
-   Generación de métricas agregadas y visualizaciones para validación.
+- High-frequency data extraction from InfluxDB
+- Processing of inertial and plantar pressure signals
+- Detection of gait events (Heel Strike, Toe Off)
+- Computation of spatiotemporal gait parameters
+- Fatigue estimation based on temporal trends
+- Reproducible batch execution across multiple trials
 
 ---
 
-## Estructura del Proyecto
+## System Architecture
 
+The project follows a modular layered architecture:
+
+1. **Acquisition Layer (Cloud-to-Local)**  
+   Data extraction from InfluxDB.
+
+2. **Persistence Layer (HDF5)**  
+   Efficient storage of time-series data.
+
+3. **Processing Layer (DSP Core)**  
+   Signal filtering, calibration, segmentation, and gait analysis.
+
+4. **Clinical Analysis Layer**  
+   Computation of biomechanical parameters and fatigue metrics.
+
+5. **Reporting Layer**  
+   Generation of aggregated metrics and validation outputs.
+
+Detailed architecture and diagrams are available in the Sphinx documentation:
+`docs/_build/html/index.html`
+
+## Project Structure
 ```
 2026_msFeat_TEA/
-├── src/gait_analysis/       # Núcleo del paquete instalable
-│   ├── __init__.py
-│   ├── extractor.py         # Extracción de datos desde InfluxDB
-│   ├── processor.py         # Procesamiento y análisis de señales
-│   └── README.md
-├── scripts/                 # Herramientas CLI (ejecución batch)
-│   ├── batch_extractor.py
-│   ├── batch_process_all.py
-│   ├── process_gait_signals.py
-│   └── README.md
-├── data/                    # Datos (no versionados)
-├── reports/                 # Resultados y métricas
-├── pyproject.toml           # Configuración del proyecto (Poetry)
-├── config.yaml              # Parámetros del pipeline
-├── config_db.yaml           # Credenciales de InfluxDB
+├── src/gait_analysis/ # Core installable package
+│ ├── __init__.py 
+│ ├── extractor.py # Data extraction from InfluxDB
+│ ├── processor.py # Signal processing and analysis
+│ ├── cli/ # Command-line interfaces
+│ │ ├── extract_data.py
+│ │ └── analyze_gait.py
+│ └── README.md
+├── config/
+│ ├── config.example.yaml # Versioned template configuration
+│ └── config.yaml # Local configuration (not versioned)
+├── data/ # Input data (ignored by Git)
+├── reports/ # Output results and metrics
+├── docs/ # Sphinx documentation
+├── pyproject.toml # Project configuration (Poetry)
 └── README.md
 ```
 
----
+## Installation
 
-## Instalación
-
-### Opción 1: Instalación estándar (recomendada)
-
-```bash
-pip install .
-```
-
-### Opción 2: Entorno de desarrollo (Poetry)
+### Recommended (Poetry)
 
 ```bash
 poetry install
 ```
-
----
-
-## Ejecución
-
-Una vez instalado el paquete:
-
+### Alternative (standard)
 ```bash
-analyze-gait
+python -m pip install .
 ```
 
-O, en entorno de desarrollo:
+## Configuration 
+The pipeline is fully driven by external configuration.
+### 1. Create your configuration file
+```bash
+cp config/config.example.yaml config/config.yaml
+```
+### 2. Edit the configuration file
+Define:
+- InfluxDB credentials (URL, token, bucket)
+- Input/output paths
+- Signal processing parameters
+- Logging verbosity
+- Language settings
+#### Important:
+The file config/config.yaml may contain sensitive information and must not be committed to version control.
+
+## Usage 
+All commands must be executed within the Poetry environment.
+
+### Data extraction (InfluxDB → HDF5)
+```bash
+poetry run extract-data --config config/config.yaml
+```
+### Gait analysis and processing
+```bash
+poetry run analyze-gait --config config/config.yaml
+```
+### Important note
+The file data/raw/gait_study_data.h5 is not included in the repository.
+If it does not exist, the analysis command will fail with an explicit error indicating how to regenerate it:
+```bash
+poetry run extract-data --config config/config.yaml
+```
+This ensures that the pipeline can always be executed from scratch.
+
+## Documentation (Sphinx)
+
+The documentation is built using Sphinx.
+
+### Build locally
 
 ```bash
-poetry run analyze-gait
+python -m sphinx -b html docs/source docs/_build/html
 ```
 
----
+## Requirements
+- Python 3.12
+- Access to an InfluxDB instance
 
-## Archivos de Configuración
+## Technical Notes
+- The project follows a src-based layout for clean packaging
+- Dependency management is handled via Poetry
+- The system can also be installed using pip
+- All runtime parameters are externalized in a single YAML configuration file
+- The pipeline is designed for batch execution and reproducibility
+- The CLI layer ensures consistent execution across environments
 
-Antes de ejecutar el pipeline, asegúrese de disponer de:
-
-* `config_db.yaml`: credenciales de acceso a InfluxDB
-* `config.yaml`: parámetros globales (frecuencia de muestreo, filtros, logging, idioma)
-
----
-
-## Requisitos
-
-* Python 3.12
-* Acceso a base de datos InfluxDB
-
----
-
-## Notas Técnicas
-
-* El proyecto utiliza estructura `src` para empaquetado limpio
-* La gestión de dependencias se realiza con Poetry (desarrollo)
-* El sistema es instalable mediante `pip`, sin necesidad de Poetry
-* El pipeline está diseñado para ejecución batch y reproducibilidad
-
----
-
-## Autor
-
+## Author
 Teresa Estevan Autrán
-
----
-
-## Estado del Proyecto
-
-En desarrollo activo — implementación progresiva de algoritmos de análisis de marcha y fatiga.
