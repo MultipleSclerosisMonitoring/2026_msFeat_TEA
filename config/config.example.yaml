@@ -13,7 +13,7 @@ processing:
   cutoff_pressure: 5.0
   cutoff_gyro: 2.0
   gyro_threshold: 50.0
-  min_peak_distance: 50
+  min_peak_distance_s: 0.5
   min_peak_height: 0.2
 
 batch:

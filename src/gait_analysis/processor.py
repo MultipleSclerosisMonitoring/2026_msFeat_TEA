@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Any, Tuple, Optional
 from scipy.signal import butter, filtfilt, find_peaks
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict,Field
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +40,13 @@ class ProcessConfig(BaseModel):
         Low-pass cutoff frequency for gyroscope signal.
     gyro_threshold : float
         Threshold to detect turning phases.
-    min_peak_distance : int
-        Minimum distance between detected peaks (samples).
+    min_peak_distance_s : float
+        Minimum distance between detected peaks (seconds).
     min_peak_height : float
         Minimum normalized amplitude for peak detection.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     fs: float = Field(default=100.0, ge=0.1)
     cutoff_pressure: float = Field(default=5.0, ge=0.1)

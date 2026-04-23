@@ -6,7 +6,6 @@ extracted gait data and compute biomechanical metrics.
 """
 
 import argparse
-from asyncio.log import logger
 import logging
 import sys
 from pathlib import Path
@@ -195,7 +194,7 @@ def main() -> None:
         processing_cfg = config.get("processing", {})
         analysis_cfg = config.get("analysis", {})
 
-        language = args.lang if args.lang is not None else project_cfg.get("language", "en")
+        language = args.lang if args.lang is not None else project_cfg.get("language", "es")
         verbose = args.verbose if args.verbose is not None else project_cfg.get("verbose", 1)
         setup_logging(verbose)
 
@@ -219,7 +218,7 @@ def main() -> None:
             cutoff_pressure=processing_cfg.get("cutoff_pressure", 5.0),
             cutoff_gyro=processing_cfg.get("cutoff_gyro", 2.0),
             gyro_threshold=processing_cfg.get("gyro_threshold", 50.0),
-            min_peak_distance=processing_cfg.get("min_peak_distance", 50),
+            min_peak_distance_s=processing_cfg.get("min_peak_distance_s", 0.5),
             min_peak_height=processing_cfg.get("min_peak_height", 0.2),
         )
 
