@@ -1,5 +1,0 @@
-setup.py
-InfluxDBms.egg-info/PKG-INFO
-InfluxDBms.egg-info/SOURCES.txt
-InfluxDBms.egg-info/dependency_links.txt
-InfluxDBms.egg-info/top_level.txt
