@@ -25,11 +25,16 @@ Responsible for:
 
 Implements:
 
-- Signal filtering and preprocessing
-- Gravity compensation
-- Detection of gait events (Heel Strike, Toe Off)
+### processor.py
+
+Implements:
+
+- Uniform resampling and zero-phase signal filtering
+- Automatic detection of the vertical inertial axis
+- Turn segmentation based on gyroscope magnitude
+- Detection of Heel Strike events from plantar pressure
 - Computation of spatiotemporal gait parameters
-- Estimation of fatigue metrics based on temporal trends
+- Baseline estimation of fatigue-sensitive temporal trends
 
 
 ## Responsibilities

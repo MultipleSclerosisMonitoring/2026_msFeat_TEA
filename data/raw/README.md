@@ -1,30 +1,53 @@
 # Data Storage - Raw Signals
-Este directorio gestiona el almacenamiento persistente local para los ensayos de análisis de marcha. Se utiliza un enfoque de base de datos jerárquica para manejar series temporales de alta frecuencia.
+
+This directory contains the raw input data consumed by the MS-Feat pipeline.
+Its contents are excluded from version control via `.gitignore` due to size
+and sensitivity.
 
 ## HDF5 Database (`gait_study_data.h5`)
-Este archivo actúa como el **repositorio central** y el puente crítico entre la etapa de Extracción y la etapa de Análisis Biomecánico.
 
-### Estructura Jerárquica
-Los datos se organizan siguiendo un esquema de rutas para optimizar las velocidades de acceso y búsqueda:
-- `p_[SubjectID] / [TestType] / trial_[Index]`
+Central storage layer between the extraction stage (InfluxDB) and the
+biomechanical analysis stage. This file is the canonical input of the
+`analyze-gait` CLI.
 
-Cada "dataset" final es un objeto **Pandas DataFrame** que incluye:
-* `_time`: Estampa de tiempo sincronizada (UTC/Local).
-* `S0, S1, S2...`: Señales de acelerometría y giroscopio (según la configuración del sensor).
-* `lat, lng`: Datos de posicionamiento GPS (opcional).
+### Hierarchical Structure
 
-### Ciclo de Vida de los Datos (Data Lifecycle)
-1. **Source**: Poblado por `scripts/batch_extractor.py` mediante consultas Flux a InfluxDB.
-2. **Consumption**: Leído por `scripts/batch_process_all.py` para la extracción de *features* clínicas.
+Data is organized using a hierarchical key scheme optimized for fast access:
 
-## Integridad y Políticas
-- **Formato**: Binario HDF5 comprimido (Blosc/LZ4) para minimizar el impacto en disco.
-- **Política de Actualización**: Los nuevos ensayos se añaden (append) al archivo existente; las claves existentes se preservan para evitar la pérdida de datos históricos.
+`p_[SubjectID] / [TestType] / trial_[Index]`
 
----
+Each dataset is a Pandas DataFrame with the following columns:
+
+- `_time`: timestamp (UTC, timezone-stripped for HDF5 compatibility).
+- `S0`, `S1`, ...: plantar pressure sensor channels.
+- `Ax`, `Ay`, `Az`: accelerometer axes.
+- `Gx`, `Gy`, `Gz`: gyroscope axes.
+- `lat`, `lng`: GPS coordinates (optional, depending on the trial).
+
+## Data Lifecycle
+
+1. **Source**: populated by the CLI `extract-data`, which queries InfluxDB
+   using Flux and stores the results in HDF5 format.
+```bash
+   poetry run extract-data --config config/config.yaml
+```
+2. **Consumption**: consumed by the CLI `analyze-gait`, which reads a
+   specific trial (identified by `analysis.h5_key` in `config.yaml`),
+   computes gait features and writes them to `reports/`.
+```bash
+   poetry run analyze-gait --config config/config.yaml
+```
+
+## Integrity and Update Policy
+
+- **Format**: binary HDF5 (PyTables `table` format with `data_columns=True`).
+- **Append policy**: new trials are appended (`mode="a"`) to the existing
+  file; existing keys are preserved.
+
 ## Git & Security Note
-Debido al tamaño potencial de los archivos binarios (>100MB), los archivos `.h5` están **excluidos del control de versiones** mediante el archivo `.gitignore`. 
 
-Para regenerar la base de datos local, asegúrese de tener las credenciales correctas en `config_db.yaml` y ejecute el script de extracción masiva.
+Raw data files (`.h5`, `.xlsx`, `.csv`, etc.) are excluded from version
+control via `.gitignore`. To regenerate the local HDF5 database, ensure
+valid InfluxDB credentials are available (via `${INFLUXDB_TOKEN}` or the
+`config.yaml` file) and run the extraction CLI.
 
----

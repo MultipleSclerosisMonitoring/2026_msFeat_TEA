@@ -35,4 +35,3 @@ html_theme = "alabaster"
 html_static_path = ["_static"]
 
 graphviz_output_format = "svg"
-graphviz_dot = r"C:\Program Files\Graphviz\bin\dot.exe"

@@ -1,44 +1,39 @@
-# CLI Scripts and Execution Entry Points
+# Legacy Scripts
 
-Este directorio contiene las herramientas de línea de comandos (CLI) diseñadas para interactuar con el paquete núcleo `gait_analysis`. Estos scripts automatizan el ciclo de vida completo de los datos: desde la recuperación en la nube hasta el almacenamiento jerárquico y el análisis biomecánico final.
+## Overview
 
-## Especificaciones Técnicas
-- **Lenguaje**: Python 3.12 (Estrictamente requerido).
-- **Gestión de Dependencias**: Integrado con **Poetry** para una resolución de entorno determinista.
-- **Motor Central**: Desacoplado, importando lógica desde el módulo `src/gait_analysis`.
-- **Persistencia de Datos**: Gestión de alto rendimiento mediante HDF5 (Hierarchical Data Format).
+This directory contains **legacy and auxiliary scripts** from earlier stages of
+the MS-Feat project. They are kept for historical reference and traceability of
+the development process.
 
----
+**These scripts are not part of the current pipeline.** The official execution
+path goes through the CLI entry points provided by the `gait_analysis` package:
 
-## Catálogo de Scripts
+```bash
+poetry run extract-data --config config/config.yaml
+poetry run analyze-gait --config config/config.yaml
+```
 
-### 1. `batch_extractor.py`
-Herramienta profesional para la extracción masiva de señales de marcha de alta frecuencia desde InfluxDB.
-- **Almacenamiento Jerárquico**: Implementa la estructura HDF5: `p_[ID_Sujeto] > [Tipo_Test] > trial_[Indice]`, optimizando las operaciones de E/S.
-- **i18n & Verbose**: Soporta logs multilingües y niveles de detalle configurables vía CLI.
-- **Sincronización Temporal**: Maneja automáticamente la conversión entre el tiempo clínico local y el UTC de la base de datos (ISO 8601).
+## Status
 
-### 2. `batch_process_all.py` 
-El motor principal para el procesamiento por lotes de la base de datos local HDF5.
-- **Autocalibración**: Detecta dinámicamente el eje vertical de cada ensayo mediante análisis gravitatorio.
-- **Auditoría Visual**: Genera un gráfico de validación para cada ensayo en `reports/plots/` para verificación clínica.
-- **Consolidación**: Agrega todas las características biomecánicas (Mean Stride, STD, etc.) en `reports/summary_metrics.csv`.
+| Script | Status | Notes |
+|---|---|---|
+| `process_gait_signals.py` | Deprecated | Predecessor of the `analyze-gait` CLI. Replaced by `gait_analysis.cli.analyze_gait`. |
+| `batch_process_all.py` | Deprecated | Batch analysis engine from an earlier iteration. Functionality partially absorbed into the current CLI. |
+| `batch_extractor.py` | Obsolete | Early CLI wrapper for the extractor. Incompatible with the current `GaitDataExtractor` API. |
+| `diagnostico_db.py` | Obsolete | One-off InfluxDB schema exploration tool. Paths and configuration file no longer reflect the current project layout. |
 
-### 3. `process_gait_signals.py`
-Herramienta de pruebas unitarias y depuración del pipeline de procesamiento.
-- **Propósito**: Utilizado para ajustar filtros, frecuencias de corte y parámetros de detección de picos en un ensayo específico antes de ejecutar el análisis masivo.
+## Why they are kept
 
----
+- **Traceability**: they document the evolution of the pipeline.
+- **Reproducibility of early results**: some intermediate artifacts were
+  generated with these scripts.
+- **Reference**: they contain alternative implementation ideas that may be
+  useful in the future.
 
-## Guía de Ejecución
+## Why they are not used
 
-Para garantizar la correcta resolución de módulos y la carga de configuraciones, estos scripts **deben ejecutarse siempre desde el directorio raíz del proyecto** utilizando Poetry.
-
-### 1. Extracción de Datos (Cloud a Local)
-Descarga los ensayos clínicos desde InfluxDB:
-```powershell
-# Ejecución estándar (6MWT)
-python -m poetry run python scripts/batch_extractor.py
-
-# Ejecución personalizada (ej. Test TUG en inglés con Debug activado)
-python -m poetry run python scripts/batch_extractor.py --test TUG --lang en --verbose 2
+- They predate the installable package structure (`src/gait_analysis/`).
+- They rely on APIs that have since been refactored.
+- The current pipeline is fully driven by external YAML configuration and
+  exposed through CLI entry points defined in `pyproject.toml`.

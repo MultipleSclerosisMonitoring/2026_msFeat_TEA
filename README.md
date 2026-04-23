@@ -12,9 +12,9 @@ The framework is oriented towards research in neurological conditions such as Mu
 
 - High-frequency data extraction from InfluxDB
 - Processing of inertial and plantar pressure signals
-- Detection of gait events (Heel Strike, Toe Off)
+- Detection of Heel Strike events from plantar pressure
 - Computation of spatiotemporal gait parameters
-- Fatigue estimation based on temporal trends
+- Baseline estimation of fatigue-sensitive temporal trends
 - Reproducible batch execution across multiple trials
 
 ---
