@@ -10,18 +10,18 @@ paths:
 
 processing:
   fs: 100.0
-  cutoff_pressure: 5.0
-  cutoff_gyro: 2.0
-  gyro_threshold: 50.0
+  cutoff_pressure: 20.0
+  cutoff_gyro: 5.0
+  gyro_threshold: 150.0
   min_peak_distance_s: 0.5
-  min_peak_height: 0.2
+  min_peak_height: 0.4
 
 batch:
   test_type: "6MWT"
   generate_plots: true
 
 analysis:
-  h5_key: "p_EXAMPLE_SUBJECT/6MWT/trial_0"
+  h5_key: "p_RHRHUG004-1/6MWT/trial_28/Right"
 
 influxdb:
   url: "https://YOUR_INFLUX_HOST:8086"

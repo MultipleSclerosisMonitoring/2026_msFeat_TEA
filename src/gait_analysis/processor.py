@@ -142,7 +142,11 @@ class GaitDataProcessor:
         Returns
         -------
         float
-            Estimated sampling frequency in Hz based on mean inter-sample interval.
+            Effective sampling frequency in Hz, computed as the total number
+            of samples divided by the total duration of the recording. This
+            estimate is robust against irregular timestamps (bursts and gaps)
+            common with BLE-streamed sensors, which bias both mean and median
+            of inter-sample intervals.
 
         Raises
         ------
@@ -151,19 +155,19 @@ class GaitDataProcessor:
         """
         if "_time" not in df.columns or len(df) < 2:
             raise ValueError("Cannot estimate sampling frequency without at least two timestamps.")
-
         time_seconds = (
             (pd.to_datetime(df["_time"]) - pd.to_datetime(df["_time"]).iloc[0])
             / np.timedelta64(1, "s")
         ).astype(float).to_numpy()
 
-        dt = np.diff(time_seconds)
-        dt = dt[dt > 0]
-
-        if len(dt) == 0:
-            raise ValueError("Invalid timestamps: non-positive time differences only.")
-
-        fs_est = 1.0 / np.mean(dt)
+        # Effective sampling frequency = total samples / total duration.
+        # This is robust against irregular timestamps (BLE-streamed sensors
+        # often emit data in bursts of dt < 1 ms followed by gaps), which
+        # bias both mean and median of inter-sample intervals.
+        duration = time_seconds[-1] - time_seconds[0]
+        if duration <= 0:
+            raise ValueError("Invalid timestamps: non-positive total duration.")
+        fs_est = (len(time_seconds) - 1) / duration
         return float(fs_est)
 
     def _resample_to_uniform_timebase(self, df: pd.DataFrame, target_fs: float) -> pd.DataFrame:
@@ -289,8 +293,8 @@ class GaitDataProcessor:
         """
         self.logger.debug("Starting gait signal processing pipeline.")
 
-        if "S0" not in df.columns or "_time" not in df.columns:
-            raise ValueError("Missing required columns: 'S0' and '_time'")
+        if "S2" not in df.columns or "_time" not in df.columns:
+            raise ValueError("Missing required columns: 'S2' (heel pressure) and '_time'")
 
         # 1. Chronological ordering
         df = df.sort_values("_time").reset_index(drop=True)
@@ -314,10 +318,10 @@ class GaitDataProcessor:
 
         # 2. Filtering
         v_axis = self._autodetect_vertical_axis(df)
-        df["S0_filt"] = self._butter_lowpass_filter(
-            df["S0"].values,
+        df["S2_filt"] = self._butter_lowpass_filter(
+            df["S2"].values,
             self.config.cutoff_pressure,
-        )
+)
 
         # 3. Turn detection
         if "Gz" in df.columns:
@@ -330,20 +334,39 @@ class GaitDataProcessor:
             df["is_turning"] = False
             self.logger.warning("Gz not found. Turn segmentation disabled.")
 
-        self.logger.debug(f"Filtered S0 preview: {df['S0_filt'].head().to_list()}")
+        self.logger.debug(f"Filtered S2 preview: {df['S2_filt'].head().to_list()}")
 
         # 4. Heel strike detection outside turning phases
-        s0_clean = df["S0_filt"].copy()
-        s0_clean[df["is_turning"]] = 0.0
+        # The plantar pressure sensor produces HIGH values when the foot is in the air
+        # and LOW values during contact. Heel strikes are therefore minima (valleys)
+        # of S2_filt. We invert and normalize the signal to [0, 1] so that find_peaks()
+        # can use a meaningful, scale-independent height threshold.
+        s2_inv_raw = -df["S2_filt"].to_numpy(dtype=float)
+
+        # Robust normalization to [0, 1] using min/max of the entire signal.
+        s2_min = float(np.min(s2_inv_raw))
+        s2_max = float(np.max(s2_inv_raw))
+        if s2_max - s2_min > 1e-9:
+            s2_norm = (s2_inv_raw - s2_min) / (s2_max - s2_min)
+        else:
+            s2_norm = np.zeros_like(s2_inv_raw)
+
+        # Suppress detection during turning phases by forcing the normalized
+        # inverted signal to 0 there (so it never reaches min_peak_height).
+        s2_norm[df["is_turning"].to_numpy()] = 0.0
 
         min_peak_distance_samples = max(1, int(self.config.min_peak_distance_s * self.config.fs))
         self.logger.debug(
             f"Peak detection minimum distance: {self.config.min_peak_distance_s:.3f} s "
             f"({min_peak_distance_samples} samples at {self.config.fs:.2f} Hz)"
         )
+        self.logger.debug(
+            f"Normalized inverted signal range used for peak detection: "
+            f"min=0.000, max=1.000 (original min={s2_min:.1f}, max={s2_max:.1f})"
+        )
 
         peaks, properties = find_peaks(
-            s0_clean,
+            s2_norm,
             distance=min_peak_distance_samples,
             height=self.config.min_peak_height,
         )

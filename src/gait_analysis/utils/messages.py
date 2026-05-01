@@ -62,8 +62,8 @@ MESSAGES: Final = {
         "es": "[!] Error en consulta Flux para {id}: {e}",
     },
     "err_schema": {
-        "en": "[!] {id} rejected: Critical signals missing (S0/_time).",
-        "es": "[!] {id} rechazado: Faltan señales críticas (S0/_time).",
+        "en": "[!] {id} rejected: Critical signals missing (S2/_time).",
+        "es": "[!] {id} rechazado: Faltan señales críticas (S2/_time).",
     },
     "err_config": {
         "en": "InfluxDB configuration not found: {path}",

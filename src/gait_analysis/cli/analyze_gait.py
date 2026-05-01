@@ -142,10 +142,10 @@ def save_plot(
     """Generate and save the gait analysis plot."""
     fig, ax = plt.subplots(figsize=(14, 7))
 
-    ax.plot(df_proc["_time"], df_proc["S0_filt"], lw=1.2, label="S0_filt")
+    ax.plot(df_proc["_time"], df_proc["S2_filt"], lw=1.2, label="S2 (heel)")
     ax.plot(
         df_proc["_time"].iloc[peaks],
-        df_proc["S0_filt"].iloc[peaks],
+        df_proc["S2_filt"].iloc[peaks],
         "rx",
         label="Heel Strike",
         markersize=8,
@@ -154,7 +154,7 @@ def save_plot(
     ax.fill_between(
         df_proc["_time"],
         0,
-        df_proc["S0_filt"].max(),
+        df_proc["S2_filt"].max(),
         where=df_proc["is_turning"],
         alpha=0.15,
         label="Turning Interval",
