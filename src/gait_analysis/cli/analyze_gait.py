@@ -9,6 +9,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+import numpy as np
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -172,6 +173,103 @@ def save_plot(
     plt.close(fig)
 
 
+def save_fatigue_plot(
+    per_minute_df: pd.DataFrame,
+    output_plot: Path,
+    h5_key: str,
+    stride_time_slope: float,
+    cadence_slope: float,
+) -> None:
+    """
+    Generate and save a per-minute fatigue analysis plot.
+
+    Two stacked panels share the X axis (block index):
+    - Top: stride time per block, with std as a shaded band, plus a linear
+      regression line that visualizes the trial-wide fatigue trend.
+    - Bottom: stride cadence per block, also with a linear regression line.
+
+    The slope annotations make the fatigue trend immediately readable.
+    """
+    if per_minute_df.empty:
+        return
+
+    blocks = per_minute_df["block_index"].to_numpy()
+    stride_mean = per_minute_df["stride_time_mean_s"].to_numpy()
+    stride_std = per_minute_df["stride_time_std_s"].to_numpy()
+    cadence = per_minute_df["stride_cadence_spm"].to_numpy()
+
+    # Linear regression lines (only over blocks that actually have stride data,
+    # to avoid letting empty blocks distort the visual).
+    valid_mask = ~np.isnan(stride_mean)
+    if valid_mask.sum() >= 2:
+        x_valid = blocks[valid_mask].astype(float)
+        st_fit = np.poly1d(np.polyfit(x_valid, stride_mean[valid_mask], 1))
+        cad_fit = np.poly1d(np.polyfit(x_valid, cadence[valid_mask], 1))
+    else:
+        st_fit = None
+        cad_fit = None
+
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+
+    # ── Top: stride time ──
+    ax_top = axes[0]
+    ax_top.errorbar(
+        blocks,
+        stride_mean,
+        yerr=stride_std,
+        fmt="o-",
+        color="#1f77b4",
+        ecolor="#1f77b4",
+        elinewidth=1.0,
+        capsize=4,
+        label="Stride time (mean ± std)",
+    )
+    if st_fit is not None:
+        x_fit = np.linspace(blocks.min(), blocks.max(), 100)
+        ax_top.plot(
+            x_fit,
+            st_fit(x_fit),
+            "--",
+            color="black",
+            alpha=0.7,
+            label=f"Linear fit (slope = {stride_time_slope:+.4f} s/block)",
+        )
+    ax_top.set_ylabel("Stride time (s)")
+    ax_top.set_title(f"Fatigue Analysis - {h5_key}")
+    ax_top.legend(loc="best")
+    ax_top.grid(True, linestyle=":", alpha=0.6)
+
+    # ── Bottom: stride cadence ──
+    ax_bot = axes[1]
+    ax_bot.plot(
+        blocks,
+        cadence,
+        "o-",
+        color="#d62728",
+        label="Stride cadence",
+    )
+    if cad_fit is not None:
+        x_fit = np.linspace(blocks.min(), blocks.max(), 100)
+        ax_bot.plot(
+            x_fit,
+            cad_fit(x_fit),
+            "--",
+            color="black",
+            alpha=0.7,
+            label=f"Linear fit (slope = {cadence_slope:+.3f} spm/block)",
+        )
+    ax_bot.set_xlabel("Block index (1 block = 60 s)")
+    ax_bot.set_ylabel("Stride cadence (spm)")
+    ax_bot.set_xticks(blocks)
+    ax_bot.legend(loc="best")
+    ax_bot.grid(True, linestyle=":", alpha=0.6)
+
+    output_plot.parent.mkdir(parents=True, exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(output_plot, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main() -> None:
     """
     Entry point for the analyze-gait CLI command.
@@ -277,11 +375,21 @@ def main() -> None:
         # Save per-minute fatigue metrics next to the trial-wide summary.
         if not per_minute_df.empty:
             per_minute_path = output_metrics.parent / "metrics_per_minute.csv"
-            # Tag each row with the same trial identifier for downstream joins.
             per_minute_df_out = per_minute_df.copy()
             per_minute_df_out.insert(0, "analysis_h5_key", h5_key)
             per_minute_df_out.to_csv(per_minute_path, index=False)
             logger.info(f"Per-minute metrics saved to: {per_minute_path}")
+
+            if not args.no_plots:
+                fatigue_plot_path = output_plot.parent / "fatigue_analysis.png"
+                save_fatigue_plot(
+                    per_minute_df=per_minute_df,
+                    output_plot=fatigue_plot_path,
+                    h5_key=h5_key,
+                    stride_time_slope=metrics.get("stride_time_minute_slope", 0.0),
+                    cadence_slope=metrics.get("stride_cadence_minute_slope", 0.0),
+                )
+                logger.info(f"Fatigue plot saved to: {fatigue_plot_path}")
 
     except Exception as e:
         logging.getLogger(__name__).error(f"Analysis pipeline failed: {e}", exc_info=True)
