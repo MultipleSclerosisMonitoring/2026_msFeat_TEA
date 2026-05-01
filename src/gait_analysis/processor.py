@@ -374,28 +374,24 @@ class GaitDataProcessor:
         self.logger.debug(f"Signal length: {len(df)} samples")
         self.logger.debug(f"Turning samples: {df['is_turning'].sum()}")
         
-        self.logger.info(f"Detected {len(peaks)} steps")
+        # 'peaks' are heel strikes from a single foot, so each one represents
+        # the start of a stride for that foot.
+        self.logger.info(f"Detected {len(peaks)} strides")
         self.logger.debug(f"Peak heights preview: {properties.get('peak_heights', [])[:5]}")
         self.logger.debug(f"Turning ratio: {df['is_turning'].sum() / len(df):.3f}")
 
         # 5. Feature extraction
         metrics: Dict[str, Any] = {
-            "pasos_detectados": int(len(peaks)),
-            "eje_vertical_utilizado": v_axis,
             "posicion_gps": "N/A",
             "walking_duration_s": 0.0,
-            "step_time_mean_s": 0.0,
-            "step_time_std_s": 0.0,
-            "step_time_cv": 0.0,
-            "cadence_spm": 0.0,
             "stride_time_mean_s": 0.0,
             "stride_time_std_s": 0.0,
             "stride_time_cv": 0.0,
-            "step_time_slope": 0.0,
             "stride_time_slope": 0.0,
-            "cadence_first_half_spm": 0.0,
-            "cadence_second_half_spm": 0.0,
-            "cadence_change_spm": 0.0,
+            "stride_cadence_spm": 0.0,
+            "stride_cadence_first_half_spm": 0.0,
+            "stride_cadence_second_half_spm": 0.0,
+            "stride_cadence_change_spm": 0.0,
         }
 
         # GPS metadata
@@ -414,61 +410,65 @@ class GaitDataProcessor:
             self.logger.warning("GPS columns are missing from the extracted dataset.")
 
         # Temporal metrics
+        # Heel strikes are detected on a single foot's S2 sensor, so each
+        # consecutive pair of strikes spans one full gait cycle of that foot.
+        # The interval between them is therefore the STRIDE TIME of that foot,
+        # not the step time (step time would require alternating strikes from
+        # both feet and is calculated by combining Left and Right HDF5 keys,
+        # which is left as future work).
         if len(peaks) > 1:
-            step_times = df["_time"].iloc[peaks].values
-            step_intervals = np.diff(step_times) / np.timedelta64(1, "s")
-            step_intervals = step_intervals.astype(float)
+            stride_times = df["_time"].iloc[peaks].values
+            stride_intervals = np.diff(stride_times) / np.timedelta64(1, "s")
+            stride_intervals = stride_intervals.astype(float)
 
             duration = float((df["_time"].iloc[-1] - df["_time"].iloc[0]).total_seconds())
             metrics["walking_duration_s"] = duration
-            metrics["step_time_mean_s"] = float(np.mean(step_intervals))
-            metrics["step_time_std_s"] = float(np.std(step_intervals))
-            metrics["step_time_cv"] = self._safe_cv(step_intervals)
+            metrics["stride_time_mean_s"] = float(np.mean(stride_intervals))
+            metrics["stride_time_std_s"] = float(np.std(stride_intervals))
+            metrics["stride_time_cv"] = self._safe_cv(stride_intervals)
 
+            # Fatigue-sensitive temporal trend (slope of stride duration over time).
+            metrics["stride_time_slope"] = self._safe_linear_slope(stride_intervals)
+
+            # Per-foot cadence (strides of this foot per minute). Clinical cadence
+            # would be the sum of strides of BOTH feet per minute, computed by
+            # combining Left and Right keys. This is single-foot cadence only.
             if duration > 0:
-                metrics["cadence_spm"] = float(len(peaks) / duration * 60.0)
+                metrics["stride_cadence_spm"] = float(len(peaks) / duration * 60.0)
 
-            # Fatigue-sensitive temporal trend
-            metrics["step_time_slope"] = self._safe_linear_slope(step_intervals)
-
-            # Stride intervals approximated as every second step interval
-            if len(step_intervals) >= 3:
-                stride_intervals = step_intervals[::2]
-                metrics["stride_time_mean_s"] = float(np.mean(stride_intervals))
-                metrics["stride_time_std_s"] = float(np.std(stride_intervals))
-                metrics["stride_time_cv"] = self._safe_cv(stride_intervals)
-                metrics["stride_time_slope"] = self._safe_linear_slope(stride_intervals)
-
-            # First-half vs second-half cadence
-            total_duration = metrics["walking_duration_s"]
-            if total_duration > 0:
+            # First-half vs second-half stride cadence (basic fatigue indicator).
+            if duration > 0:
                 t0 = df["_time"].iloc[0]
-                relative_step_times = (
-                    (pd.to_datetime(step_times) - t0) / np.timedelta64(1, "s")
+                relative_stride_times = (
+                    (pd.to_datetime(stride_times) - t0) / np.timedelta64(1, "s")
                 ).astype(float)
 
-                half_time = total_duration / 2.0
-                first_half_steps = int(np.sum(relative_step_times < half_time))
-                second_half_steps = int(np.sum(relative_step_times >= half_time))
+                half_time = duration / 2.0
+                first_half_strides = int(np.sum(relative_stride_times < half_time))
+                second_half_strides = int(np.sum(relative_stride_times >= half_time))
 
                 first_half_duration = half_time
-                second_half_duration = total_duration - half_time
+                second_half_duration = duration - half_time
 
                 if first_half_duration > 0:
-                    metrics["cadence_first_half_spm"] = float(first_half_steps / first_half_duration * 60.0)
-
+                    metrics["stride_cadence_first_half_spm"] = float(
+                        first_half_strides / first_half_duration * 60.0
+                    )
                 if second_half_duration > 0:
-                    metrics["cadence_second_half_spm"] = float(second_half_steps / second_half_duration * 60.0)
+                    metrics["stride_cadence_second_half_spm"] = float(
+                        second_half_strides / second_half_duration * 60.0
+                    )
 
-                metrics["cadence_change_spm"] = float(
-                    metrics["cadence_second_half_spm"] - metrics["cadence_first_half_spm"]
+                metrics["stride_cadence_change_spm"] = float(
+                    metrics["stride_cadence_second_half_spm"]
+                    - metrics["stride_cadence_first_half_spm"]
                 )
 
             self.logger.info(
                 "Temporal features extracted successfully: "
-                f"step_mean={metrics['step_time_mean_s']:.3f}s, "
-                f"cadence={metrics['cadence_spm']:.1f} spm, "
-                f"step_slope={metrics['step_time_slope']:.6f}"
+                f"stride_mean={metrics['stride_time_mean_s']:.3f}s, "
+                f"stride_cadence={metrics['stride_cadence_spm']:.1f} spm, "
+                f"stride_slope={metrics['stride_time_slope']:.6f}"
             )
 
         else:
