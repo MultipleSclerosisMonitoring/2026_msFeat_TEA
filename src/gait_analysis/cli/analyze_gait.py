@@ -259,7 +259,7 @@ def main() -> None:
         logger.info(f"Loaded HDF5 key: {h5_key}")
         logger.info(f"Rows loaded: {len(df_raw)}")
 
-        df_proc, metrics, peaks = processor.process_signals(df_raw)
+        df_proc, metrics, peaks, per_minute_df = processor.process_signals(df_raw)
         metrics["analysis_h5_key"] = h5_key
         metrics["analysis_timestamp"] = str(pd.Timestamp.now())
         metrics["processing_fs_hz"] = process_config.fs
@@ -268,16 +268,20 @@ def main() -> None:
         metrics["processing_gyro_threshold"] = process_config.gyro_threshold
         metrics["processing_min_peak_distance_s"] = process_config.min_peak_distance_s
         metrics["processing_min_peak_height"] = process_config.min_peak_height
+        metrics["processing_minute_block_duration_s"] = process_config.minute_block_duration_s
 
         output_metrics.parent.mkdir(parents=True, exist_ok=True)
         pd.DataFrame([metrics]).to_csv(output_metrics, index=False)
         logger.info(f"Metrics saved to: {output_metrics}")
 
-        if not args.no_plots:
-            save_plot(df_proc, peaks, output_plot, h5_key)
-            logger.info(f"Plot saved to: {output_plot}")
-
-        logger.info("Gait analysis completed successfully.")
+        # Save per-minute fatigue metrics next to the trial-wide summary.
+        if not per_minute_df.empty:
+            per_minute_path = output_metrics.parent / "metrics_per_minute.csv"
+            # Tag each row with the same trial identifier for downstream joins.
+            per_minute_df_out = per_minute_df.copy()
+            per_minute_df_out.insert(0, "analysis_h5_key", h5_key)
+            per_minute_df_out.to_csv(per_minute_path, index=False)
+            logger.info(f"Per-minute metrics saved to: {per_minute_path}")
 
     except Exception as e:
         logging.getLogger(__name__).error(f"Analysis pipeline failed: {e}", exc_info=True)

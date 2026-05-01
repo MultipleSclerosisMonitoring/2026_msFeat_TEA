@@ -44,6 +44,11 @@ class ProcessConfig(BaseModel):
         Minimum distance between detected peaks (seconds).
     min_peak_height : float
         Minimum normalized amplitude for peak detection.
+    minute_block_duration_s : float
+        Duration of each block in the per-minute fatigue analysis (seconds).
+        Default is 60 s, matching the standard segmentation used in 6MWT
+        fatigue studies. Set higher for shorter trials, lower for finer-grained
+        temporal resolution.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -54,6 +59,7 @@ class ProcessConfig(BaseModel):
     gyro_threshold: float = Field(default=50.0)
     min_peak_distance_s: float = Field(default=0.5, ge=0.05)
     min_peak_height: float = Field(default=0.2)
+    minute_block_duration_s: float = Field(default=60.0, ge=5.0)
 
 
 class GaitDataProcessor:
@@ -260,8 +266,119 @@ class GaitDataProcessor:
             return 0.0
 
         return float(np.std(values) / mean_val)
+    
+    def _compute_minute_metrics(
+        self,
+        df: pd.DataFrame,
+        peaks: np.ndarray,
+    ) -> pd.DataFrame:
+        """
+        Compute stride metrics within fixed-duration blocks of the trial.
 
-    def process_signals(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any], np.ndarray]:
+        This is the core of the fatigue analysis: by tracking how stride
+        time and stride cadence evolve over consecutive time blocks of
+        the trial (typically 60 s each in a 6MWT), we can detect gradual
+        deterioration that is not visible in trial-wide averages.
+
+        The trial is divided into blocks of `minute_block_duration_s`.
+        Blocks shorter than 50 % of that duration are discarded to avoid
+        artefacts at the trial's tail.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Resampled, filtered signal dataframe with a '_time' column.
+        peaks : np.ndarray
+            Indices of detected heel-strike peaks.
+
+        Returns
+        -------
+        pd.DataFrame
+            One row per accepted block, with columns:
+            - block_index (int): 0-based block number
+            - block_start_s (float): seconds since trial start
+            - block_end_s (float): seconds since trial start
+            - n_strides (int): strides starting in this block
+            - stride_time_mean_s (float): mean stride time in this block
+            - stride_time_std_s (float): standard deviation of stride times
+            - stride_cadence_spm (float): strides per minute in this block
+        """
+        if len(peaks) < 2:
+            self.logger.warning(
+                "Not enough peaks to compute per-minute metrics; need at least 2."
+            )
+            return pd.DataFrame()
+
+        block_dur = float(self.config.minute_block_duration_s)
+        if block_dur <= 0:
+            self.logger.error("minute_block_duration_s must be positive.")
+            return pd.DataFrame()
+
+        # Time of each peak (seconds since trial start) and stride intervals.
+        t0 = df["_time"].iloc[0]
+        peak_times_s = (
+            (pd.to_datetime(df["_time"].iloc[peaks]) - t0)
+            / np.timedelta64(1, "s")
+        ).astype(float).to_numpy()
+
+        # Each stride is the interval between consecutive peaks; we attribute
+        # each stride to the block where it STARTS (i.e. where the first peak
+        # of the pair falls). This is the standard convention.
+        stride_intervals = np.diff(peak_times_s)
+        stride_start_times = peak_times_s[:-1]
+
+        total_duration = float(
+            (df["_time"].iloc[-1] - df["_time"].iloc[0]).total_seconds()
+        )
+        n_blocks_full = int(np.floor(total_duration / block_dur))
+        last_partial = total_duration - n_blocks_full * block_dur
+        # Accept the last partial block only if it covers >= 50 % of block_dur.
+        n_blocks_total = (
+            n_blocks_full + 1 if last_partial >= 0.5 * block_dur else n_blocks_full
+        )
+
+        if n_blocks_total < 1:
+            self.logger.warning(
+                f"Trial duration {total_duration:.1f}s shorter than half a block "
+                f"({0.5 * block_dur:.1f}s); no per-minute metrics computed."
+            )
+            return pd.DataFrame()
+
+        rows = []
+        for i in range(n_blocks_total):
+            start_s = i * block_dur
+            end_s = min((i + 1) * block_dur, total_duration)
+            mask = (stride_start_times >= start_s) & (stride_start_times < end_s)
+            block_strides = stride_intervals[mask]
+
+            if len(block_strides) == 0:
+                row = {
+                    "block_index": i,
+                    "block_start_s": start_s,
+                    "block_end_s": end_s,
+                    "n_strides": 0,
+                    "stride_time_mean_s": np.nan,
+                    "stride_time_std_s": np.nan,
+                    "stride_cadence_spm": 0.0,
+                }
+            else:
+                row = {
+                    "block_index": i,
+                    "block_start_s": start_s,
+                    "block_end_s": end_s,
+                    "n_strides": int(len(block_strides)),
+                    "stride_time_mean_s": float(np.mean(block_strides)),
+                    "stride_time_std_s": float(np.std(block_strides)),
+                    "stride_cadence_spm": float(
+                        len(block_strides) / (end_s - start_s) * 60.0
+                    ),
+                }
+            rows.append(row)
+
+        return pd.DataFrame(rows)
+
+
+    def process_signals(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any], np.ndarray, pd.DataFrame]:
         """
         Execute the full gait processing pipeline.
 
@@ -470,8 +587,36 @@ class GaitDataProcessor:
                 f"stride_cadence={metrics['stride_cadence_spm']:.1f} spm, "
                 f"stride_slope={metrics['stride_time_slope']:.6f}"
             )
-
         else:
-            self.logger.warning("Not enough detected steps to compute temporal gait features.")
+            self.logger.warning("Not enough detected strides to compute temporal gait features.")
 
-        return df, metrics, peaks
+        # ────────────────────────────────────────────────────────────────────
+        # Per-minute fatigue analysis
+        # ────────────────────────────────────────────────────────────────────
+        # Compute stride metrics in fixed-duration blocks (typically 60 s)
+        # and derive the linear trend across blocks. The slope across blocks
+        # captures progressive fatigue more sensitively than the trial-wide
+        # slope (stride_time_slope), which averages variability within blocks
+        # and may miss progressive deterioration in pace.
+        per_minute_df = self._compute_minute_metrics(df, peaks)
+        if not per_minute_df.empty:
+            metrics["n_minute_blocks"] = int(len(per_minute_df))
+            valid_blocks = per_minute_df.dropna(subset=["stride_time_mean_s"])
+            if len(valid_blocks) >= 2:
+                metrics["stride_time_minute_slope"] = self._safe_linear_slope(
+                    valid_blocks["stride_time_mean_s"].to_numpy()
+                )
+                metrics["stride_cadence_minute_slope"] = self._safe_linear_slope(
+                    valid_blocks["stride_cadence_spm"].to_numpy()
+                )
+                self.logger.info(
+                    f"Per-minute fatigue analysis: {len(per_minute_df)} blocks, "
+                    f"stride_time_slope={metrics['stride_time_minute_slope']:.6f} s/block, "
+                    f"cadence_slope={metrics['stride_cadence_minute_slope']:.3f} spm/block"
+                )
+            else:
+                self.logger.warning(
+                    "Less than 2 valid blocks; per-minute slopes left at 0."
+                )
+
+        return df, metrics, peaks, per_minute_df
