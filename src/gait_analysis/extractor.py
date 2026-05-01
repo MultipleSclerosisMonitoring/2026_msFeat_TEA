@@ -82,9 +82,19 @@ class GaitDataExtractor:
     def _validate_extracted_data(self, df: pd.DataFrame) -> bool:
         """
         Verifica que el DataFrame contenga las señales mínimas antes de persistir.
+
+        Required columns:
+        - _time: timestamp.
+        - S2: heel pressure sensor (used for heel-strike detection).
+        - Foot: tag identifying which foot ('Left' or 'Right'),
+          since each trial contains data from BOTH feet interleaved.
         """
-        required = {"_time", "S0"}
-        return required.issubset(df.columns)
+        required = {"_time", "S2", "Foot"}
+        if not required.issubset(df.columns):
+            missing = required - set(df.columns)
+            self.logger.error(f"Missing required columns: {missing}")
+            return False
+        return True
 
     def run_batch_extraction(
         self,
@@ -158,17 +168,52 @@ class GaitDataExtractor:
 
                 df["_time"] = df["_time"].dt.tz_localize(None)
 
-                h_key = f"p_{p_id}/{test_type}/trial_{idx}"
-                df.to_hdf(
-                    self.h5_database,
-                    key=h_key,
-                    mode="a",
-                    format="table",
-                    data_columns=True,
-                )
+                # Each trial contains interleaved samples from BOTH feet (one
+                # sensor per foot). Persist them under separate HDF5 keys to
+                # preserve per-foot timing and avoid mixing signals.
+                metadata_columns = ["Foot", "DeviceName", "type", "result", "table"]
+                feet_present = df["Foot"].unique().tolist()
+                expected_feet = {"Left", "Right"}
+                missing_feet = expected_feet - set(feet_present)
+                if missing_feet:
+                    self.logger.warning(
+                        f"[{p_id}] trial_{idx}: missing data for foot(s): {missing_feet}"
+                    )
 
-                self.logger.info(get_message("save_ok", self.lang, id=p_id, h5_key=h_key))
-                return True
+                saved_any = False
+                for foot in feet_present:
+                    if foot not in expected_feet:
+                        self.logger.warning(
+                            f"[{p_id}] trial_{idx}: ignoring unexpected foot label '{foot}'"
+                        )
+                        continue
+
+                    df_foot = df[df["Foot"] == foot].copy()
+                    if df_foot.empty:
+                        continue
+
+                    # Drop tag columns and InfluxDB metadata that should not
+                    # propagate downstream (lat, lng, Mx, My, Mz are kept).
+                    cols_to_drop = [c for c in metadata_columns if c in df_foot.columns]
+                    df_foot = df_foot.drop(columns=cols_to_drop)
+
+                    h_key = f"p_{p_id}/{test_type}/trial_{idx}/{foot}"
+                    df_foot.to_hdf(
+                        self.h5_database,
+                        key=h_key,
+                        mode="a",
+                        format="table",
+                        data_columns=True,
+                    )
+                    self.logger.info(
+                        get_message("save_ok", self.lang, id=p_id, h5_key=h_key)
+                    )
+                    saved_any = True
+
+                return saved_any
+
+            self.logger.warning(get_message("no_data", self.lang, id=p_id))
+            return False
 
             self.logger.warning(get_message("no_data", self.lang, id=p_id))
             return False
