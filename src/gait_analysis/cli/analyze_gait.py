@@ -204,9 +204,12 @@ def save_fatigue_plot(
     """
     if per_minute_df.empty:
         return
-
-    blocks = per_minute_df["block_index"].to_numpy()
+    # The internal block_index is 0-based for arithmetic, but for display
+    # we shift to 1-based so the X axis reads 1..6 (= minute 1 ... minute 6
+    # of the 6MWT) instead of 0..5, which is more intuitive for clinicians.
+    blocks = per_minute_df["block_index"].to_numpy() + 1
     stride_mean = per_minute_df["stride_time_mean_s"].to_numpy()
+    
     stride_std = per_minute_df["stride_time_std_s"].to_numpy()
     cadence = per_minute_df["stride_cadence_spm"].to_numpy()
 
@@ -270,7 +273,7 @@ def save_fatigue_plot(
             alpha=0.7,
             label=f"Linear fit (slope = {cadence_slope:+.3f} spm/block)",
         )
-    ax_bot.set_xlabel("Block index (1 block = 60 s)")
+    ax_bot.set_xlabel("Minute of trial")
     ax_bot.set_ylabel("Stride cadence (spm)")
     ax_bot.set_xticks(blocks)
     ax_bot.legend(loc="best")
@@ -384,7 +387,6 @@ def main() -> None:
         output_metrics.parent.mkdir(parents=True, exist_ok=True)
         pd.DataFrame([metrics]).to_csv(output_metrics, index=False)
         logger.info(f"Metrics saved to: {output_metrics}")
-
 
         # Save per-minute fatigue metrics next to the trial-wide summary.
         # Save the gait segmentation plot (S2 with HS, TO and turning).
