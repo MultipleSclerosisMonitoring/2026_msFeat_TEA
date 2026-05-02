@@ -137,21 +137,35 @@ def validate_config(config: dict) -> None:
 def save_plot(
     df_proc: pd.DataFrame,
     peaks,
+    toe_offs,
     output_plot: Path,
     h5_key: str,
 ) -> None:
-    """Generate and save the gait analysis plot."""
-    fig, ax = plt.subplots(figsize=(14, 7))
+    """
+    Generate and save the gait segmentation plot.
 
+    Heel Strikes are marked with red squares, Toe-Offs with blue triangles.
+    Turning intervals (gyro magnitude above threshold) are shaded in light
+    blue.
+    """
+    fig, ax = plt.subplots(figsize=(14, 7))
     ax.plot(df_proc["_time"], df_proc["S2_filt"], lw=1.2, label="S2 (heel)")
     ax.plot(
         df_proc["_time"].iloc[peaks],
         df_proc["S2_filt"].iloc[peaks],
-        "rx",
+        "rs",
         label="Heel Strike",
-        markersize=8,
+        markersize=7,
+        markeredgewidth=1.5,
     )
-
+    ax.plot(
+        df_proc["_time"].iloc[toe_offs],
+        df_proc["S2_filt"].iloc[toe_offs],
+        "b^",
+        label="Toe-Off",
+        markersize=7,
+        markeredgewidth=1.5,
+    )
     ax.fill_between(
         df_proc["_time"],
         0,
@@ -160,13 +174,11 @@ def save_plot(
         alpha=0.15,
         label="Turning Interval",
     )
-
     ax.set_title(f"Gait Segmentation - {h5_key}")
     ax.set_ylabel("Normalized Pressure (AU)")
     ax.set_xlabel("Time (s)")
     ax.legend(loc="upper right")
     ax.grid(True, linestyle=":", alpha=0.6)
-
     output_plot.parent.mkdir(parents=True, exist_ok=True)
     plt.tight_layout()
     plt.savefig(output_plot, dpi=300, bbox_inches="tight")
@@ -357,7 +369,7 @@ def main() -> None:
         logger.info(f"Loaded HDF5 key: {h5_key}")
         logger.info(f"Rows loaded: {len(df_raw)}")
 
-        df_proc, metrics, peaks, per_minute_df = processor.process_signals(df_raw)
+        df_proc, metrics, peaks, toe_offs, per_minute_df = processor.process_signals(df_raw)
         metrics["analysis_h5_key"] = h5_key
         metrics["analysis_timestamp"] = str(pd.Timestamp.now())
         metrics["processing_fs_hz"] = process_config.fs
@@ -367,10 +379,18 @@ def main() -> None:
         metrics["processing_min_peak_distance_s"] = process_config.min_peak_distance_s
         metrics["processing_min_peak_height"] = process_config.min_peak_height
         metrics["processing_minute_block_duration_s"] = process_config.minute_block_duration_s
+        metrics["processing_edge_threshold"] = process_config.edge_threshold
 
         output_metrics.parent.mkdir(parents=True, exist_ok=True)
         pd.DataFrame([metrics]).to_csv(output_metrics, index=False)
         logger.info(f"Metrics saved to: {output_metrics}")
+
+
+        # Save per-minute fatigue metrics next to the trial-wide summary.
+        # Save the gait segmentation plot (S2 with HS, TO and turning).
+        if not args.no_plots:
+            save_plot(df_proc, peaks, toe_offs, output_plot, h5_key)
+            logger.info(f"Plot saved to: {output_plot}")
 
         # Save per-minute fatigue metrics next to the trial-wide summary.
         if not per_minute_df.empty:

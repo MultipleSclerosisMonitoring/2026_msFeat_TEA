@@ -49,6 +49,10 @@ class ProcessConfig(BaseModel):
         Default is 60 s, matching the standard segmentation used in 6MWT
         fatigue studies. Set higher for shorter trials, lower for finer-grained
         temporal resolution.
+    edge_threshold : float
+        Normalized amplitude threshold (0-1) used to identify Heel Strike
+        and Toe-Off as rising/falling edge crossings of the S2 signal.
+        Default is 0.5 (= 50 % of the trial's dynamic range).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -60,6 +64,7 @@ class ProcessConfig(BaseModel):
     min_peak_distance_s: float = Field(default=0.5, ge=0.05)
     min_peak_height: float = Field(default=0.2)
     minute_block_duration_s: float = Field(default=60.0, ge=5.0)
+    edge_threshold: float = Field(default=0.5, ge=0.05, le=0.95)
 
 
 class GaitDataProcessor:
@@ -267,6 +272,107 @@ class GaitDataProcessor:
 
         return float(np.std(values) / mean_val)
     
+    def _detect_gait_events(
+        self,
+        s2_filt: np.ndarray,
+        is_turning: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Detect heel-strike and toe-off events from the filtered S2 signal.
+
+        Implementation of the two-step "valley + threshold-crossing" method
+        commonly used in plantar-pressure-based gait analysis:
+
+        1. Find mid-swing valleys on the inverted normalized signal (these
+           mark the deepest part of the swing phase, when the heel sensor
+           reads its lowest value).
+        2. For each valley, the next time the upright normalized signal
+           rises above ``edge_threshold`` is a Heel Strike (foot lands).
+        3. For each Heel Strike, the next time the signal drops below
+           ``edge_threshold`` is a Toe-Off (foot lifts off).
+
+        Stance phase = HS -> TO. Swing phase = TO -> next HS.
+
+        Parameters
+        ----------
+        s2_filt : np.ndarray
+            Filtered S2 signal (heel pressure), upright (high = stance).
+        is_turning : np.ndarray
+            Boolean array of the same length, True where the gyro indicates
+            high-magnitude rotation. Valleys inside turning regions are
+            ignored.
+
+        Returns
+        -------
+        heel_strikes : np.ndarray
+            Indices of heel-strike events.
+        toe_offs : np.ndarray
+            Indices of toe-off events. ``len(toe_offs) == len(heel_strikes)``;
+            each toe-off is the one that closes the stance started by the
+            corresponding heel strike.
+        valleys : np.ndarray
+            Indices of mid-swing valleys (kept for diagnostics / plotting).
+        """
+        # 1. Mid-swing valleys: peaks of the inverted normalized signal.
+        s2_inv = -s2_filt
+        s2_inv_min = float(np.min(s2_inv))
+        s2_inv_max = float(np.max(s2_inv))
+        if s2_inv_max - s2_inv_min > 1e-9:
+            s2_inv_norm = (s2_inv - s2_inv_min) / (s2_inv_max - s2_inv_min)
+        else:
+            s2_inv_norm = np.zeros_like(s2_inv)
+        # Suppress detection during turning regions.
+        s2_inv_norm[is_turning] = 0.0
+
+        min_peak_distance_samples = max(
+            1, int(self.config.min_peak_distance_s * self.config.fs)
+        )
+        valleys, _ = find_peaks(
+            s2_inv_norm,
+            distance=min_peak_distance_samples,
+            height=self.config.min_peak_height,
+        )
+
+        # 2. Upright normalized signal for threshold-crossing detection.
+        s2_min = float(np.min(s2_filt))
+        s2_max = float(np.max(s2_filt))
+        if s2_max - s2_min > 1e-9:
+            s2_norm = (s2_filt - s2_min) / (s2_max - s2_min)
+        else:
+            s2_norm = np.zeros_like(s2_filt)
+
+        threshold = float(self.config.edge_threshold)
+        n = len(s2_norm)
+
+        heel_strikes: list = []
+        toe_offs: list = []
+
+        for i, v_idx in enumerate(valleys):
+            next_v = valleys[i + 1] if i + 1 < len(valleys) else n
+
+            # Heel Strike: first rising-edge crossing AFTER the valley.
+            segment_after_valley = s2_norm[v_idx:next_v]
+            above = np.where(segment_after_valley > threshold)[0]
+            if len(above) == 0:
+                continue
+            hs_idx = v_idx + above[0]
+
+            # Toe-Off: first falling-edge crossing AFTER the heel strike.
+            segment_after_hs = s2_norm[hs_idx:next_v]
+            below = np.where(segment_after_hs < threshold)[0]
+            if len(below) == 0:
+                continue
+            to_idx = hs_idx + below[0]
+
+            heel_strikes.append(hs_idx)
+            toe_offs.append(to_idx)
+
+        return (
+            np.array(heel_strikes, dtype=int),
+            np.array(toe_offs, dtype=int),
+            valleys,
+        )
+
     def _compute_minute_metrics(
         self,
         df: pd.DataFrame,
@@ -378,7 +484,7 @@ class GaitDataProcessor:
         return pd.DataFrame(rows)
 
 
-    def process_signals(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any], np.ndarray, pd.DataFrame]:
+    def process_signals(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any], np.ndarray, np.ndarray, pd.DataFrame]:
         """
         Execute the full gait processing pipeline.
 
@@ -453,54 +559,49 @@ class GaitDataProcessor:
 
         self.logger.debug(f"Filtered S2 preview: {df['S2_filt'].head().to_list()}")
 
-        # 4. Heel strike detection outside turning phases
-        # The plantar pressure sensor produces HIGH values when the foot is in the air
-        # and LOW values during contact. Heel strikes are therefore minima (valleys)
-        # of S2_filt. We invert and normalize the signal to [0, 1] so that find_peaks()
-        # can use a meaningful, scale-independent height threshold.
-        s2_inv_raw = -df["S2_filt"].to_numpy(dtype=float)
+        # 4. Heel-Strike and Toe-Off detection outside turning phases.
+        #
+        # Sensor convention (validated empirically by cross-referencing the
+        # S2 peaks with positive Gz peaks that mark Toe-Off in three different
+        # patients): S2 reads HIGH while the foot is bearing weight on the
+        # ground (stance) and LOW while the foot is in the air (swing).
+        #
+        # We detect events using the two-step "valley + edge crossing" method
+        # encapsulated in `_detect_gait_events`:
+        #   - Heel Strike (HS) = first rising-edge crossing of `edge_threshold`
+        #     after a mid-swing valley.
+        #   - Toe-Off    (TO) = first falling-edge crossing after the HS.
+        # Stance phase = HS -> TO. Swing phase = TO -> next HS.
+        s2_signal = df["S2_filt"].to_numpy(dtype=float)
+        is_turning = df["is_turning"].to_numpy()
 
-        # Robust normalization to [0, 1] using min/max of the entire signal.
-        s2_min = float(np.min(s2_inv_raw))
-        s2_max = float(np.max(s2_inv_raw))
-        if s2_max - s2_min > 1e-9:
-            s2_norm = (s2_inv_raw - s2_min) / (s2_max - s2_min)
-        else:
-            s2_norm = np.zeros_like(s2_inv_raw)
+        peaks, toe_offs, _valleys = self._detect_gait_events(
+            s2_filt=s2_signal,
+            is_turning=is_turning,
+        )
 
-        # Suppress detection during turning phases by forcing the normalized
-        # inverted signal to 0 there (so it never reaches min_peak_height).
-        s2_norm[df["is_turning"].to_numpy()] = 0.0
-
-        min_peak_distance_samples = max(1, int(self.config.min_peak_distance_s * self.config.fs))
         self.logger.debug(
-            f"Peak detection minimum distance: {self.config.min_peak_distance_s:.3f} s "
-            f"({min_peak_distance_samples} samples at {self.config.fs:.2f} Hz)"
+            f"Edge threshold for HS/TO detection: {self.config.edge_threshold:.2f} "
+            f"(applied on signal normalized to [0, 1])"
         )
         self.logger.debug(
-            f"Normalized inverted signal range used for peak detection: "
-            f"min=0.000, max=1.000 (original min={s2_min:.1f}, max={s2_max:.1f})"
+            f"Original S2 range: min={s2_signal.min():.1f}, max={s2_signal.max():.1f}"
         )
-
-        peaks, properties = find_peaks(
-            s2_norm,
-            distance=min_peak_distance_samples,
-            height=self.config.min_peak_height,
-        )
-
         self.logger.debug(f"Signal length: {len(df)} samples")
         self.logger.debug(f"Turning samples: {df['is_turning'].sum()}")
-        
-        # 'peaks' are heel strikes from a single foot, so each one represents
-        # the start of a stride for that foot.
-        self.logger.info(f"Detected {len(peaks)} strides")
-        self.logger.debug(f"Peak heights preview: {properties.get('peak_heights', [])[:5]}")
         self.logger.debug(f"Turning ratio: {df['is_turning'].sum() / len(df):.3f}")
+
+        # Each peak is a Heel Strike of the analysed foot; each gait cycle
+        # begins there. Toe-offs come paired 1:1 with heel-strikes.
+        self.logger.info(
+            f"Detected {len(peaks)} heel strikes and {len(toe_offs)} toe-offs"
+        )
 
         # 5. Feature extraction
         metrics: Dict[str, Any] = {
             "posicion_gps": "N/A",
             "walking_duration_s": 0.0,
+            # Stride-level metrics (HS to next HS of the same foot).
             "stride_time_mean_s": 0.0,
             "stride_time_std_s": 0.0,
             "stride_time_cv": 0.0,
@@ -509,6 +610,14 @@ class GaitDataProcessor:
             "stride_cadence_first_half_spm": 0.0,
             "stride_cadence_second_half_spm": 0.0,
             "stride_cadence_change_spm": 0.0,
+            # Sub-cycle phases (HS to TO = stance, TO to next HS = swing).
+            "stance_time_mean_s": 0.0,
+            "stance_time_std_s": 0.0,
+            "stance_time_cv": 0.0,
+            "swing_time_mean_s": 0.0,
+            "swing_time_std_s": 0.0,
+            "swing_time_cv": 0.0,
+            "stance_swing_ratio": 0.0,
         }
 
         # GPS metadata
@@ -581,11 +690,45 @@ class GaitDataProcessor:
                     - metrics["stride_cadence_first_half_spm"]
                 )
 
+            # Stance / swing decomposition.
+            # Stance = HS_i -> TO_i (foot on the ground).
+            # Swing  = TO_i -> HS_{i+1} (foot in the air).
+            # We filter out non-physiological values (<= 0 or >= 3 s) that
+            # could appear at trial edges or when an event is missing.
+            if len(toe_offs) >= 1 and len(peaks) >= 1:
+                stance_times = (
+                    (df["_time"].iloc[toe_offs].values - df["_time"].iloc[peaks].values)
+                    / np.timedelta64(1, "s")
+                ).astype(float)
+                stance_times = stance_times[(stance_times > 0) & (stance_times < 3.0)]
+                if len(stance_times) >= 1:
+                    metrics["stance_time_mean_s"] = float(np.mean(stance_times))
+                    metrics["stance_time_std_s"] = float(np.std(stance_times))
+                    metrics["stance_time_cv"] = self._safe_cv(stance_times)
+
+            if len(toe_offs) >= 1 and len(peaks) >= 2:
+                swing_times = (
+                    (df["_time"].iloc[peaks[1:]].values - df["_time"].iloc[toe_offs[:-1]].values)
+                    / np.timedelta64(1, "s")
+                ).astype(float)
+                swing_times = swing_times[(swing_times > 0) & (swing_times < 3.0)]
+                if len(swing_times) >= 1:
+                    metrics["swing_time_mean_s"] = float(np.mean(swing_times))
+                    metrics["swing_time_std_s"] = float(np.std(swing_times))
+                    metrics["swing_time_cv"] = self._safe_cv(swing_times)
+
+            if metrics["swing_time_mean_s"] > 0:
+                metrics["stance_swing_ratio"] = float(
+                    metrics["stance_time_mean_s"] / metrics["swing_time_mean_s"]
+                )
+
             self.logger.info(
                 "Temporal features extracted successfully: "
                 f"stride_mean={metrics['stride_time_mean_s']:.3f}s, "
                 f"stride_cadence={metrics['stride_cadence_spm']:.1f} spm, "
-                f"stride_slope={metrics['stride_time_slope']:.6f}"
+                f"stride_slope={metrics['stride_time_slope']:.6f}, "
+                f"stance%={100*metrics['stance_time_mean_s']/metrics['stride_time_mean_s']:.1f}% "
+                f"of stride"
             )
         else:
             self.logger.warning("Not enough detected strides to compute temporal gait features.")
@@ -619,4 +762,4 @@ class GaitDataProcessor:
                     "Less than 2 valid blocks; per-minute slopes left at 0."
                 )
 
-        return df, metrics, peaks, per_minute_df
+        return df, metrics, peaks, toe_offs, per_minute_df
