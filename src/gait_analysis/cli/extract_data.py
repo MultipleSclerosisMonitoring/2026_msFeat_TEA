@@ -8,12 +8,9 @@ from InfluxDB and store it locally (e.g., HDF5) for further processing.
 import argparse
 import logging
 from pathlib import Path
-import os
-import re
-
-import yaml
 
 from gait_analysis.extractor import GaitDataExtractor
+from gait_analysis.utils.config_loader import load_project_config
 from gait_analysis.utils.logging_config import setup_logging
 from gait_analysis.utils.messages import get_message
 
@@ -68,52 +65,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     return parser
 
-
-def _expand_env_vars(value):
-    """
-    Expand environment variables of the form ${VAR_NAME} inside strings.
-    """
-    if isinstance(value, dict):
-        return {k: _expand_env_vars(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_expand_env_vars(v) for v in value]
-    if isinstance(value, str):
-        pattern = re.compile(r"\$\{([^}]+)\}")
-
-        def replacer(match):
-            var_name = match.group(1)
-            env_value = os.getenv(var_name)
-            if env_value is None:
-                raise ValueError(
-                    f"Environment variable '{var_name}' is not defined."
-                )
-            return env_value
-
-        return pattern.sub(replacer, value)
-
-    return value
-
-
-def load_config(config_path: str) -> dict:
-    """
-    Load YAML configuration file and expand environment variables.
-
-    Args:
-        config_path (str): Path to the configuration file.
-
-    Returns:
-        dict: Parsed configuration dictionary.
-    """
-    path = Path(config_path)
-    if not path.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
-
-    with path.open("r", encoding="utf-8") as f:
-        raw_config = yaml.safe_load(f) or {}
-
-    return _expand_env_vars(raw_config)
-
-
 def main() -> None:
     """
     Entry point for the extract-data CLI command.
@@ -124,7 +75,7 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    config = load_config(args.config)
+    config = load_project_config(args.config)
     project_cfg = config.get("project", {})
     paths_cfg = config.get("paths", {})
     batch_cfg = config.get("batch", {})

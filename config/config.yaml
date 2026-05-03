@@ -23,10 +23,20 @@ batch:
   generate_plots: true
 
 analysis:
-  h5_key: "p_RHRHUG004-1/6MWT/trial_28/Right"
+  h5_key: "p_RHRHUG004-1/6MWT/trial_28/Left"
 
 influxdb:
-  bucket: "Gait/autogen"
-  org: "UPM"
+  org: "${INFLUXDB_ORG}"
+  bucket: "${INFLUXDB_BUCKET}"
+  measurement: "${INFLUXDB_MEASUREMENT}"
+  url: "${INFLUXDB_URL}"
   token: ${INFLUXDB_TOKEN}
-  url: "https://138.100.82.178:8086"
+  verify: ${INFLUXDB_VERIFY}
+  timeout: ${INFLUXDB_TIMEOUT}
+
+postgresql:
+  host: "${POSTGRES_HOST}"
+  user: "${POSTGRES_USER}"
+  password: "${POSTGRES_PASSWORD}"
+  database: "${POSTGRES_DB}"
+  port: ${POSTGRES_PORT}

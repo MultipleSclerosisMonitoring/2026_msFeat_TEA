@@ -23,6 +23,9 @@ __pycache__/
 
 # --- Local data and generated artifacts ---
 config/config.yaml
+.env
+.env.*
+!.env.example
 data/
 *.h5
 reports/data/

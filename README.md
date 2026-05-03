@@ -79,16 +79,23 @@ The pipeline is fully driven by external configuration.
 ### 1. Create your configuration file
 ```bash
 cp config/config.example.yaml config/config.yaml
+cp .env.example .env
 ```
 ### 2. Edit the configuration file
 Define:
-- InfluxDB credentials (URL, token, bucket)
+- InfluxDB credentials (via `.env`)
 - Input/output paths
 - Signal processing parameters
 - Logging verbosity
 - Language settings
+### 3. Fill in the secrets in `.env`
+The CLI automatically loads a project-local `.env` file and resolves
+`${VAR_NAME}` placeholders from `config/config.yaml`.
+
+This keeps credentials out of versioned YAML files while preserving a
+reproducible config structure.
 #### Important:
-The file config/config.yaml may contain sensitive information and must not be committed to version control.
+The file `.env` contains sensitive information and must not be committed to version control.
 
 ## Usage 
 All commands must be executed within the Poetry environment.

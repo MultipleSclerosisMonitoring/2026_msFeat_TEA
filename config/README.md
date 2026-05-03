@@ -35,7 +35,11 @@ Create a local configuration file from the template:
 
 ```bash
 cp config/config.example.yaml config/config.yaml
+cp .env.example .env
 ```
+
+The CLI automatically loads `.env` from the project root and resolves
+`${VAR_NAME}` placeholders referenced inside `config/config.yaml`.
 
 ## Design Principles
 
@@ -54,6 +58,6 @@ poetry run analyze-gait --config config/config.yaml
 ```
 
 ## Notes
-- config.yaml may contain sensitive information and should not be versioned
+- `.env` may contain sensitive information and should not be versioned
 - config.example.yaml is the version intended to be shared in the repository
 - All runtime behavior should be controlled from configuration rather than modifying the source code

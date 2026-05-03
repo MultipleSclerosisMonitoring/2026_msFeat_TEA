@@ -26,7 +26,17 @@ analysis:
   h5_key: "p_RHRHUG004-1/6MWT/trial_28/Right"
 
 influxdb:
-  url: "https://YOUR_INFLUX_HOST:8086"
-  org: "YOUR_ORG"
-  bucket: "YOUR_BUCKET"
-  token: "YOUR_INFLUXDB_TOKEN"
+  url: "${INFLUXDB_URL}"
+  org: "${INFLUXDB_ORG}"
+  bucket: "${INFLUXDB_BUCKET}"
+  measurement: "${INFLUXDB_MEASUREMENT}"
+  token: "${INFLUXDB_TOKEN}"
+  verify: ${INFLUXDB_VERIFY}
+  timeout: ${INFLUXDB_TIMEOUT}
+
+postgresql:
+  host: "${POSTGRES_HOST}"
+  user: "${POSTGRES_USER}"
+  password: "${POSTGRES_PASSWORD}"
+  database: "${POSTGRES_DB}"
+  port: ${POSTGRES_PORT}
