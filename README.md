@@ -104,6 +104,16 @@ All commands must be executed within the Poetry environment.
 ```bash
 poetry run extract-data --config config/config.yaml
 ```
+
+Selective extraction and HDF5 audit are also supported:
+
+```bash
+poetry run extract-data --config config/config.yaml --ids 87 89
+poetry run extract-data --config config/config.yaml --codeid RHRHUG004-1 --test 6MWT
+poetry run extract-data --config config/config.yaml --ids 87 89 --check-only
+poetry run extract-data --config config/config.yaml --test 6MWT --missing-only
+poetry run extract-data --config config/config.yaml --list-hdf5-keys
+```
 ### Gait analysis and processing
 ```bash
 poetry run analyze-gait --config config/config.yaml

@@ -14,6 +14,18 @@ It acts as the entry point for users, connecting external configuration files wi
 Extracts sensor data from InfluxDB and stores it locally in HDF5 format.
 `extract-data --config config/config.yaml`
 
+Selective extraction and audit examples:
+
+`extract-data --config config/config.yaml --ids 87 89`
+
+`extract-data --config config/config.yaml --codeid RHRHUG004-1 --test 6MWT`
+
+`extract-data --config config/config.yaml --ids 87 89 --check-only`
+
+`extract-data --config config/config.yaml --test 6MWT --missing-only`
+
+`extract-data --config config/config.yaml --list-hdf5-keys`
+
 ### analyze-gait
 
 Processes extracted data and computes gait-related metrics.
@@ -33,6 +45,23 @@ Both commands support the following arguments:
 - `--lang`  
   Language for messages (if enabled)
 
+### extract-data specific arguments
+
+- `--ids`
+  Extract or audit only the specified CSV row ids
+
+- `--codeid`
+  Extract or audit only the specified patient identifiers
+
+- `--missing-only`
+  Skip rows already complete in HDF5 (both `Left` and `Right`)
+
+- `--check-only`
+  Compare the selected CSV rows against the HDF5 and exit without extracting
+
+- `--list-hdf5-keys`
+  Print the HDF5 keys currently available and exit
+
 
 ## Usage
 
@@ -49,3 +78,4 @@ poetry run analyze-gait --config config/config.yaml
 - Fully driven by external configuration
 - Ensures reproducible execution across environments
 - Designed for batch processing workflows
+- Supports selective extraction and HDF5 audit workflows

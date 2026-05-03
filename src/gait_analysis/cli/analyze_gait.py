@@ -35,7 +35,7 @@ def build_keyed_output_path(base_path: Path, h5_key: str) -> Path:
 
     Example:
     - reports/data/metrics_summary.csv
-    - reports/data/metrics_summary_p_RHRHUG004-1_6MWT_trial_28_Right.csv
+    - reports/data/metrics_summary_p_RHRHUG004-1_6MWT_start_2025-11-28T12-46-09Z_Right.csv
     """
     safe_key = h5_key.strip("/").replace("/", "_")
     safe_key = re.sub(r"[^A-Za-z0-9._-]+", "_", safe_key)

@@ -8,6 +8,7 @@ el almacenamiento en contenedores jerárquicos de alto rendimiento.
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 from influxdb_client import InfluxDBClient
@@ -96,10 +97,93 @@ class GaitDataExtractor:
             return False
         return True
 
+    @staticmethod
+    def build_trial_label_from_start(start_dt: pd.Timestamp) -> str:
+        """
+        Build a stable, self-contained trial label from the test start time.
+
+        The timestamp is normalized to UTC so that the HDF5 key does not depend
+        on the original local timezone representation of the CSV.
+        """
+        start_utc = start_dt.tz_convert("UTC")
+        return f"start_{start_utc.strftime('%Y-%m-%dT%H-%M-%SZ')}"
+
+    @classmethod
+    def build_h5_key(
+        cls,
+        codeid: str,
+        test_type: str,
+        start_dt: pd.Timestamp,
+        foot: str,
+        leading_slash: bool = False,
+    ) -> str:
+        prefix = "/" if leading_slash else ""
+        trial_label = cls.build_trial_label_from_start(start_dt)
+        return f"{prefix}p_{codeid}/{test_type}/{trial_label}/{foot}"
+
+    @classmethod
+    def build_expected_h5_keys_from_row(cls, row: pd.Series) -> dict[str, str]:
+        start_dt = pd.to_datetime(row["d_from"])
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.tz_localize("UTC")
+        codeid = str(row["codeid"])
+        test_type = str(row["t_code"])
+        return {
+            foot: cls.build_h5_key(
+                codeid=codeid,
+                test_type=test_type,
+                start_dt=start_dt,
+                foot=foot,
+                leading_slash=True,
+            )
+            for foot in ("Left", "Right")
+        }
+
+    def list_hdf5_keys(self) -> list[str]:
+        if not self.h5_database.exists():
+            return []
+        with pd.HDFStore(self.h5_database, mode="r") as store:
+            return list(store.keys())
+
+    def audit_registry_rows(self, rows: pd.DataFrame) -> list[dict[str, Any]]:
+        existing_keys = set(self.list_hdf5_keys())
+        results: list[dict[str, Any]] = []
+        for _, row in rows.iterrows():
+            expected_keys = self.build_expected_h5_keys_from_row(row)
+            left_present = expected_keys["Left"] in existing_keys
+            right_present = expected_keys["Right"] in existing_keys
+            if left_present and right_present:
+                status = "complete"
+            elif left_present:
+                status = "left_only"
+            elif right_present:
+                status = "right_only"
+            else:
+                status = "missing"
+
+            results.append(
+                {
+                    "id": row.get("id"),
+                    "codeid": row.get("codeid"),
+                    "t_code": row.get("t_code"),
+                    "d_from": row.get("d_from"),
+                    "left_present": left_present,
+                    "right_present": right_present,
+                    "status": status,
+                    "left_key": expected_keys["Left"],
+                    "right_key": expected_keys["Right"],
+                }
+            )
+        return results
+
     def run_batch_extraction(
         self,
         csv_filepath: str | Path = "tests.csv",
-        test_type: str = "6MWT",
+        test_type: str | None = "6MWT",
+        ids: list[int] | None = None,
+        codeids: list[str] | None = None,
+        apply_test_filter: bool = True,
+        missing_only: bool = False,
     ) -> None:
         """Ejecuta el pipeline de extracción masiva definido en el registro CSV."""
         csv_path = Path(csv_filepath)
@@ -112,19 +196,39 @@ class GaitDataExtractor:
             )
 
         df_registry = pd.read_csv(csv_path)
-        subset = df_registry[df_registry["t_code"] == test_type]
+        subset = df_registry.copy()
+
+        if ids:
+            subset = subset[subset["id"].isin(ids)]
+
+        if codeids:
+            subset = subset[subset["codeid"].isin(codeids)]
+
+        if apply_test_filter and test_type is not None:
+            subset = subset[subset["t_code"] == test_type]
 
         if subset.empty:
             raise ValueError(
-                f"No records found in registry CSV for test_type='{test_type}'."
+                "No records found in registry CSV for the selected filters."
             )
 
-        self.logger.info(get_message("start_batch", self.lang, test=test_type))
+        batch_label = test_type if test_type is not None else "ALL"
+        self.logger.info(get_message("start_batch", self.lang, test=batch_label))
         self.logger.info(get_message("records_found", self.lang, n=len(subset)))
 
         saved_count = 0
+        skipped_count = 0
+        existing_keys = set(self.list_hdf5_keys()) if missing_only else set()
 
         for idx, row in subset.iterrows():
+            if missing_only:
+                expected_keys = self.build_expected_h5_keys_from_row(row)
+                if (
+                    expected_keys["Left"] in existing_keys
+                    and expected_keys["Right"] in existing_keys
+                ):
+                    skipped_count += 1
+                    continue
             if self._extract_patient_data(row, idx, test_type):
                 saved_count += 1
 
@@ -134,10 +238,13 @@ class GaitDataExtractor:
             )
 
         self.logger.info(f"Stored {saved_count} trials in {self.h5_database}")
+        if missing_only and skipped_count:
+            self.logger.info(f"Skipped {skipped_count} trials already complete in HDF5.")
 
-    def _extract_patient_data(self, row: pd.Series, idx: int, test_type: str) -> bool:
+    def _extract_patient_data(self, row: pd.Series, idx: int, test_type: str | None) -> bool:
         """Consulta Flux, normalización y almacenamiento HDF5."""
         p_id = str(row["codeid"])
+        effective_test_type = str(test_type or row["t_code"])
 
         start_dt = pd.to_datetime(row["d_from"])
         stop_dt = pd.to_datetime(row["d_until"])
@@ -146,6 +253,7 @@ class GaitDataExtractor:
             start_dt = start_dt.tz_localize("UTC")
             stop_dt = stop_dt.tz_localize("UTC")
 
+        trial_label = self.build_trial_label_from_start(start_dt)
         start_iso = start_dt.isoformat()
         stop_iso = stop_dt.isoformat()
 
@@ -177,14 +285,14 @@ class GaitDataExtractor:
                 missing_feet = expected_feet - set(feet_present)
                 if missing_feet:
                     self.logger.warning(
-                        f"[{p_id}] trial_{idx}: missing data for foot(s): {missing_feet}"
+                        f"[{p_id}] {trial_label}: missing data for foot(s): {missing_feet}"
                     )
 
                 saved_any = False
                 for foot in feet_present:
                     if foot not in expected_feet:
                         self.logger.warning(
-                            f"[{p_id}] trial_{idx}: ignoring unexpected foot label '{foot}'"
+                            f"[{p_id}] {trial_label}: ignoring unexpected foot label '{foot}'"
                         )
                         continue
 
@@ -197,7 +305,12 @@ class GaitDataExtractor:
                     cols_to_drop = [c for c in metadata_columns if c in df_foot.columns]
                     df_foot = df_foot.drop(columns=cols_to_drop)
 
-                    h_key = f"p_{p_id}/{test_type}/trial_{idx}/{foot}"
+                    h_key = self.build_h5_key(
+                        codeid=p_id,
+                        test_type=effective_test_type,
+                        start_dt=start_dt,
+                        foot=foot,
+                    )
                     df_foot.to_hdf(
                         self.h5_database,
                         key=h_key,

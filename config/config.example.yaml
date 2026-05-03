@@ -23,7 +23,7 @@ batch:
   generate_plots: true
 
 analysis:
-  h5_key: "p_RHRHUG004-1/6MWT/trial_28/Right"
+  h5_key: "p_RHRHUG004-1/6MWT/start_2025-11-28T12-46-09Z/Right"
 
 influxdb:
   url: "${INFLUXDB_URL}"

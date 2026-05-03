@@ -9,6 +9,8 @@ import argparse
 import logging
 from pathlib import Path
 
+import pandas as pd
+
 from gait_analysis.extractor import GaitDataExtractor
 from gait_analysis.utils.config_loader import load_project_config
 from gait_analysis.utils.logging_config import setup_logging
@@ -48,6 +50,40 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--ids",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Optional list of CSV row ids to extract or audit.",
+    )
+
+    parser.add_argument(
+        "--codeid",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Optional list of patient codeid values to extract or audit.",
+    )
+
+    parser.add_argument(
+        "--missing-only",
+        action="store_true",
+        help="Extract only trials whose Left/Right keys are not both present in the HDF5.",
+    )
+
+    parser.add_argument(
+        "--list-hdf5-keys",
+        action="store_true",
+        help="List all keys currently present in the output HDF5 and exit.",
+    )
+
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="Audit the selected CSV rows against the HDF5 and exit without extracting.",
+    )
+
+    parser.add_argument(
         "--lang",
         type=str,
         default=None,
@@ -64,6 +100,41 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     return parser
+
+
+def _resolve_registry_subset(
+    csv_file: Path,
+    ids: list[int] | None,
+    codeids: list[str] | None,
+    test_type: str | None,
+    apply_test_filter: bool,
+) -> pd.DataFrame:
+    df_registry = pd.read_csv(csv_file)
+    subset = df_registry.copy()
+
+    if ids:
+        subset = subset[subset["id"].isin(ids)]
+
+    if codeids:
+        subset = subset[subset["codeid"].isin(codeids)]
+
+    if apply_test_filter and test_type is not None:
+        subset = subset[subset["t_code"] == test_type]
+
+    return subset
+
+
+def _print_audit_results(results: list[dict]) -> None:
+    if not results:
+        print("No matching rows found in the registry CSV.")
+        return
+
+    for item in results:
+        print(
+            f"id={item['id']} codeid={item['codeid']} test={item['t_code']} "
+            f"status={item['status']} left={item['left_present']} right={item['right_present']}"
+        )
+
 
 def main() -> None:
     """
@@ -86,13 +157,21 @@ def main() -> None:
 
     language = args.lang if args.lang is not None else project_cfg.get("language", "es")
     csv_path = args.csv if args.csv is not None else paths_cfg.get("registry_csv", "tests.csv")
+    has_case_filters = bool(args.ids or args.codeid)
     test_type = args.test if args.test is not None else batch_cfg.get("test_type", "6MWT")
+    apply_test_filter = (args.test is not None) or (not has_case_filters)
     output_h5 = paths_cfg.get("h5_path", "data/raw/gait_study_data.h5")
 
     logger = logging.getLogger(__name__)
     logger.info(get_message("config_loaded", language))
     logger.info(get_message("registry_csv_path", language, path=csv_path))
-    logger.info(get_message("selected_test_type", language, test_type=test_type))
+    logger.info(
+        get_message(
+            "selected_test_type",
+            language,
+            test_type=test_type if apply_test_filter else "ALL",
+        )
+    )
     logger.info(get_message("output_hdf5_path", language, path=output_h5))
 
     csv_file = Path(csv_path)
@@ -113,9 +192,34 @@ def main() -> None:
     )
 
     try:
+        if args.list_hdf5_keys:
+            keys = extractor.list_hdf5_keys()
+            if not keys:
+                print("No HDF5 keys found.")
+            else:
+                for key in keys:
+                    print(key)
+            return
+
+        subset = _resolve_registry_subset(
+            csv_file=csv_file,
+            ids=args.ids,
+            codeids=args.codeid,
+            test_type=test_type,
+            apply_test_filter=apply_test_filter,
+        )
+
+        if args.check_only:
+            _print_audit_results(extractor.audit_registry_rows(subset))
+            return
+
         extractor.run_batch_extraction(
             csv_filepath=csv_file,
             test_type=test_type,
+            ids=args.ids,
+            codeids=args.codeid,
+            apply_test_filter=apply_test_filter,
+            missing_only=args.missing_only,
         )
     finally:
         extractor.close()
