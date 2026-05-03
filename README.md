@@ -114,6 +114,35 @@ poetry run extract-data --config config/config.yaml --ids 87 89 --check-only
 poetry run extract-data --config config/config.yaml --test 6MWT --missing-only
 poetry run extract-data --config config/config.yaml --list-hdf5-keys
 ```
+
+### Typical targeted workflow
+For day-to-day work, the recommended flow is usually:
+
+1. Check whether the selected CSV rows are already present in HDF5:
+
+```bash
+poetry run extract-data --config config/config.yaml --ids 87 89 --check-only
+```
+
+2. Extract only the missing or desired cases:
+
+```bash
+poetry run extract-data --config config/config.yaml --ids 87 89
+```
+
+3. Inspect the available HDF5 keys if needed:
+
+```bash
+poetry run extract-data --config config/config.yaml --list-hdf5-keys
+```
+
+4. Analyze a specific extracted foot directly from the command line:
+
+```bash
+poetry run analyze-gait --config config/config.yaml \
+  --h5-key p_RHRHUG004-1/6MWT/start_2025-11-28T12-46-09Z/Right
+```
+
 ### Gait analysis and processing
 ```bash
 poetry run analyze-gait --config config/config.yaml

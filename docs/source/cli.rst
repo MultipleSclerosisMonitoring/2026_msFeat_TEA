@@ -39,6 +39,33 @@ HDF5 trial keys are now self-contained and derived from the CSV start time in UT
 
    p_RHRHUG004-1/6MWT/start_2025-11-28T12-46-09Z/Right
 
+Typical targeted workflow:
+
+1. Check whether the selected CSV rows are already present in HDF5:
+
+.. code-block:: bash
+
+   poetry run extract-data --config config/config.yaml --ids 87 89 --check-only
+
+2. Extract only the desired cases:
+
+.. code-block:: bash
+
+   poetry run extract-data --config config/config.yaml --ids 87 89
+
+3. Inspect the available HDF5 keys if needed:
+
+.. code-block:: bash
+
+   poetry run extract-data --config config/config.yaml --list-hdf5-keys
+
+4. Analyze a specific extracted foot without editing the config file:
+
+.. code-block:: bash
+
+   poetry run analyze-gait --config config/config.yaml \
+     --h5-key p_RHRHUG004-1/6MWT/start_2025-11-28T12-46-09Z/Right
+
 analyze-gait
 ------------
 

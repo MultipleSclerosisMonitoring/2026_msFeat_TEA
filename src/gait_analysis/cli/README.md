@@ -26,6 +26,24 @@ Selective extraction and audit examples:
 
 `extract-data --config config/config.yaml --list-hdf5-keys`
 
+Typical targeted workflow:
+
+1. Check whether the selected CSV rows are already present in HDF5:
+
+`extract-data --config config/config.yaml --ids 87 89 --check-only`
+
+2. Extract only the desired cases:
+
+`extract-data --config config/config.yaml --ids 87 89`
+
+3. Inspect the available HDF5 keys if needed:
+
+`extract-data --config config/config.yaml --list-hdf5-keys`
+
+4. Analyze a specific extracted foot without editing the config file:
+
+`analyze-gait --config config/config.yaml --h5-key p_RHRHUG004-1/6MWT/start_2025-11-28T12-46-09Z/Right`
+
 ### analyze-gait
 
 Processes extracted data and computes gait-related metrics.
