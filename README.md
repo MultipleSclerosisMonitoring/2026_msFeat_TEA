@@ -118,6 +118,13 @@ poetry run extract-data --config config/config.yaml --list-hdf5-keys
 ```bash
 poetry run analyze-gait --config config/config.yaml
 ```
+
+You can analyze a specific extracted trial without editing the config file:
+
+```bash
+poetry run analyze-gait --config config/config.yaml \
+  --h5-key p_RHRHUG004-1/6MWT/start_2025-11-28T12-46-09Z/Right
+```
 ### Important note
 The file data/raw/gait_study_data.h5 is not included in the repository.
 If it does not exist, the analysis command will fail with an explicit error indicating how to regenerate it:

@@ -31,6 +31,10 @@ Selective extraction and audit examples:
 Processes extracted data and computes gait-related metrics.
 `analyze-gait --config config/config.yaml`
 
+You can override the configured HDF5 key directly:
+
+`analyze-gait --config config/config.yaml --h5-key p_RHRHUG004-1/6MWT/start_2025-11-28T12-46-09Z/Right`
+
 
 ## Common Arguments
 
@@ -44,6 +48,9 @@ Both commands support the following arguments:
 
 - `--lang`  
   Language for messages (if enabled)
+
+- `--h5-key`
+  Optional override for the HDF5 key to analyze
 
 ### extract-data specific arguments
 

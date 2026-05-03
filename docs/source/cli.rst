@@ -45,3 +45,13 @@ analyze-gait
 .. code-block:: bash
 
    poetry run analyze-gait --config config/config.yaml
+
+You can also override the configured HDF5 key directly from the command line:
+
+.. code-block:: bash
+
+   poetry run analyze-gait --config config/config.yaml \
+     --h5-key p_RHRHUG004-1/6MWT/start_2025-11-28T12-46-09Z/Right
+
+This is especially useful when comparing multiple patients, tests or feet
+without editing ``config/config.yaml`` between runs.

@@ -69,6 +69,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--h5-key",
+        type=str,
+        default=None,
+        help="Optional override for the HDF5 key to analyze.",
+    )
+
+    parser.add_argument(
         "--verbose",
         type=int,
         default=None,
@@ -286,7 +293,7 @@ def main() -> None:
             base_dir,
             paths_cfg.get("output_plot", "reports/plots/gait_segmentation.png"),
         )
-        h5_key = analysis_cfg["h5_key"]
+        h5_key = args.h5_key if args.h5_key is not None else analysis_cfg["h5_key"]
         output_metrics = build_keyed_output_path(output_metrics_base, h5_key)
         output_plot = build_keyed_output_path(output_plot_base, h5_key)
 
