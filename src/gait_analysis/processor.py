@@ -377,6 +377,7 @@ class GaitDataProcessor:
         self,
         df: pd.DataFrame,
         peaks: np.ndarray,
+        toe_offs: np.ndarray,
     ) -> pd.DataFrame:
         """
         Compute stride metrics within fixed-duration blocks of the trial.
@@ -433,6 +434,40 @@ class GaitDataProcessor:
         stride_intervals = np.diff(peak_times_s)
         stride_start_times = peak_times_s[:-1]
 
+        # Stance and swing per stride.
+        # Stance_i = TO_i - HS_i (toe-off i closes the stance started by HS_i).
+        # Swing_i  = HS_{i+1} - TO_i (the air phase between TO_i and next HS).
+        # Both arrays are aligned to stride index (so stride i has stance[i]
+        # and swing[i]). Non-physiological values (<= 0 or >= 3 s) are masked
+        # as NaN so they do not distort block-wise means.
+        if len(toe_offs) >= 1 and len(peaks) >= 1:
+            to_times_s = (
+                (pd.to_datetime(df["_time"].iloc[toe_offs]) - t0)
+                / np.timedelta64(1, "s")
+            ).astype(float).to_numpy()
+            stance_per_stride = to_times_s - peak_times_s[: len(to_times_s)]
+            stance_per_stride = np.where(
+                (stance_per_stride > 0) & (stance_per_stride < 3.0),
+                stance_per_stride,
+                np.nan,
+            )
+        else:
+            stance_per_stride = np.array([], dtype=float)
+
+        if len(toe_offs) >= 2 and len(peaks) >= 2:
+            # Swing_i = HS_{i+1} - TO_i. The last toe-off has no following
+            # heel strike within this trial, so we compute swing only for
+            # the first (N-1) strides where N = min(len(peaks), len(toe_offs)).
+            n_swings = min(len(peak_times_s) - 1, len(to_times_s) - 1)
+            swing_per_stride = peak_times_s[1 : n_swings + 1] - to_times_s[:n_swings]
+            swing_per_stride = np.where(
+                (swing_per_stride > 0) & (swing_per_stride < 3.0),
+                swing_per_stride,
+                np.nan,
+            )
+        else:
+            swing_per_stride = np.array([], dtype=float)
+
         total_duration = float(
             (df["_time"].iloc[-1] - df["_time"].iloc[0]).total_seconds()
         )
@@ -466,8 +501,35 @@ class GaitDataProcessor:
                     "stride_time_mean_s": np.nan,
                     "stride_time_std_s": np.nan,
                     "stride_cadence_spm": 0.0,
+                    "stance_time_mean_s": np.nan,
+                    "stance_time_std_s": np.nan,
+                    "swing_time_mean_s": np.nan,
+                    "swing_time_std_s": np.nan,
                 }
             else:
+                # Indices of strides attributed to this block.
+                block_stride_idx = np.where(mask)[0]
+
+                # Stance values for strides in this block.
+                if len(stance_per_stride) > 0:
+                    valid_stance_idx = block_stride_idx[
+                        block_stride_idx < len(stance_per_stride)
+                    ]
+                    block_stance = stance_per_stride[valid_stance_idx]
+                    block_stance = block_stance[~np.isnan(block_stance)]
+                else:
+                    block_stance = np.array([])
+
+                # Swing values for strides in this block.
+                if len(swing_per_stride) > 0:
+                    valid_swing_idx = block_stride_idx[
+                        block_stride_idx < len(swing_per_stride)
+                    ]
+                    block_swing = swing_per_stride[valid_swing_idx]
+                    block_swing = block_swing[~np.isnan(block_swing)]
+                else:
+                    block_swing = np.array([])
+
                 row = {
                     "block_index": i,
                     "block_start_s": start_s,
@@ -478,9 +540,28 @@ class GaitDataProcessor:
                     "stride_cadence_spm": float(
                         len(block_strides) / (end_s - start_s) * 60.0
                     ),
+                    "stance_time_mean_s": (
+                        float(np.mean(block_stance))
+                        if len(block_stance) > 0
+                        else np.nan
+                    ),
+                    "stance_time_std_s": (
+                        float(np.std(block_stance))
+                        if len(block_stance) > 0
+                        else np.nan
+                    ),
+                    "swing_time_mean_s": (
+                        float(np.mean(block_swing))
+                        if len(block_swing) > 0
+                        else np.nan
+                    ),
+                    "swing_time_std_s": (
+                        float(np.std(block_swing))
+                        if len(block_swing) > 0
+                        else np.nan
+                    ),
                 }
             rows.append(row)
-
         return pd.DataFrame(rows)
 
 
@@ -636,6 +717,12 @@ class GaitDataProcessor:
             "swing_time_std_s": 0.0,
             "swing_time_cv": 0.0,
             "stance_swing_ratio": 0.0,
+            # Per-minute fatigue slopes (linear regression over 60-s blocks).
+            "n_minute_blocks": 0,
+            "stride_time_minute_slope": 0.0,
+            "stride_cadence_minute_slope": 0.0,
+            "stance_time_minute_slope": 0.0,
+            "swing_time_minute_slope": 0.0,
         }
 
         # GPS metadata
@@ -759,7 +846,7 @@ class GaitDataProcessor:
         # captures progressive fatigue more sensitively than the trial-wide
         # slope (stride_time_slope), which averages variability within blocks
         # and may miss progressive deterioration in pace.
-        per_minute_df = self._compute_minute_metrics(df, peaks)
+        per_minute_df = self._compute_minute_metrics(df, peaks, toe_offs)
         if not per_minute_df.empty:
             metrics["n_minute_blocks"] = int(len(per_minute_df))
             valid_blocks = per_minute_df.dropna(subset=["stride_time_mean_s"])
@@ -770,11 +857,26 @@ class GaitDataProcessor:
                 metrics["stride_cadence_minute_slope"] = self._safe_linear_slope(
                     valid_blocks["stride_cadence_spm"].to_numpy()
                 )
-                self.logger.info(
-                    f"Per-minute fatigue analysis: {len(per_minute_df)} blocks, "
-                    f"stride_time_slope={metrics['stride_time_minute_slope']:.6f} s/block, "
-                    f"cadence_slope={metrics['stride_cadence_minute_slope']:.3f} spm/block"
-                )
+                # Sub-cycle phase slopes: only use blocks where stance/swing
+                # are not NaN (a block may have strides but missing stance/swing
+                # if the corresponding TO event was filtered out as non-physiological).
+                stance_blocks = per_minute_df.dropna(subset=["stance_time_mean_s"])
+                if len(stance_blocks) >= 2:
+                    metrics["stance_time_minute_slope"] = self._safe_linear_slope(
+                        stance_blocks["stance_time_mean_s"].to_numpy()
+                    )
+                    swing_blocks = per_minute_df.dropna(subset=["swing_time_mean_s"])
+                    if len(swing_blocks) >= 2:
+                        metrics["swing_time_minute_slope"] = self._safe_linear_slope(
+                            swing_blocks["swing_time_mean_s"].to_numpy()
+                        )
+                    self.logger.info(
+                        f"Per-minute fatigue analysis: {len(per_minute_df)} blocks, "
+                        f"stride_time_slope={metrics['stride_time_minute_slope']:.6f} s/block, "
+                        f"cadence_slope={metrics['stride_cadence_minute_slope']:.3f} spm/block, "
+                        f"stance_slope={metrics['stance_time_minute_slope']:.6f} s/block, "
+                        f"swing_slope={metrics['swing_time_minute_slope']:.6f} s/block"
+                    )
             else:
                 self.logger.warning(
                     "Less than 2 valid blocks; per-minute slopes left at 0."
