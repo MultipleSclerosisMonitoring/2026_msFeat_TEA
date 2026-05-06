@@ -546,16 +546,34 @@ class GaitDataProcessor:
             self.config.cutoff_pressure,
 )
 
-        # 3. Turn detection
-        if "Gz" in df.columns:
-            df["Gz_filt"] = self._butter_lowpass_filter(
-                df["Gz"].values,
-                self.config.cutoff_gyro,
+        # 3. Turn detection.
+        #
+        # We compute the L2 norm of the angular velocity vector
+        # (||(Gx, Gy, Gz)||) instead of relying on |Gz| alone. The norm
+        # is invariant to sensor orientation: independently of how the
+        # IMU is positioned inside the sock, the magnitude of rotation
+        # is the same. This avoids missing rotational activity when the
+        # vertical world axis aligns with Gx or Gy rather than Gz.
+        gyro_axes = ["Gx", "Gy", "Gz"]
+        if all(axis in df.columns for axis in gyro_axes):
+            for axis in gyro_axes:
+                df[f"{axis}_filt"] = self._butter_lowpass_filter(
+                    df[axis].values,
+                    self.config.cutoff_gyro,
+                )
+            gyro_magnitude = np.sqrt(
+                df["Gx_filt"] ** 2
+                + df["Gy_filt"] ** 2
+                + df["Gz_filt"] ** 2
             )
-            df["is_turning"] = df["Gz_filt"].abs() > self.config.gyro_threshold
+            df["gyro_magnitude"] = gyro_magnitude
+            df["is_turning"] = gyro_magnitude > self.config.gyro_threshold
         else:
             df["is_turning"] = False
-            self.logger.warning("Gz not found. Turn segmentation disabled.")
+            missing = [a for a in gyro_axes if a not in df.columns]
+            self.logger.warning(
+                f"Gyroscope axes missing ({missing}). Turn segmentation disabled."
+            )
 
         self.logger.debug(f"Filtered S2 preview: {df['S2_filt'].head().to_list()}")
 
