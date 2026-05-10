@@ -41,6 +41,26 @@ def build_keyed_output_path(base_path: Path, h5_key: str) -> Path:
     safe_key = re.sub(r"[^A-Za-z0-9._-]+", "_", safe_key)
     return base_path.with_name(f"{base_path.stem}_{safe_key}{base_path.suffix}")
 
+def parse_test_type_from_h5_key(h5_key: str) -> str | None:
+    """
+    Extract the clinical test type from a structured HDF5 key.
+
+    HDF5 keys have the format:
+        p_<codeid>/<test_type>/start_<iso_timestamp>/<foot>
+
+    For example, ``p_RHRHUG004-1/TUG/start_2025-11-28T12-43-14Z/Right``
+    yields ``"TUG"``.
+
+    Returns
+    -------
+    str | None
+        The test type string (e.g. "6MWT", "TUG", "T25FW"), or ``None``
+        if the key does not follow the expected structure.
+    """
+    parts = h5_key.strip("/").split("/")
+    if len(parts) >= 2:
+        return parts[1]
+    return None
 
 def build_parser() -> argparse.ArgumentParser:
     """
@@ -347,7 +367,15 @@ def main() -> None:
         logger.info(f"Loaded HDF5 key: {h5_key}")
         logger.info(f"Rows loaded: {len(df_raw)}")
 
-        df_proc, metrics, peaks, toe_offs, per_minute_df = processor.process_signals(df_raw)
+        test_type = parse_test_type_from_h5_key(h5_key)
+        if test_type:
+            logger.info(f"Detected clinical test type: {test_type}")
+        clinical_tests_cfg = config.get("clinical_tests", {})
+        df_proc, metrics, peaks, toe_offs, per_minute_df = processor.process_signals(
+            df_raw,
+            test_type=test_type,
+            clinical_tests_cfg=clinical_tests_cfg,
+        )
         metrics["analysis_h5_key"] = h5_key
         metrics["analysis_timestamp"] = str(pd.Timestamp.now())
         metrics["processing_fs_hz"] = process_config.fs

@@ -565,7 +565,12 @@ class GaitDataProcessor:
         return pd.DataFrame(rows)
 
 
-    def process_signals(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any], np.ndarray, np.ndarray, pd.DataFrame]:
+    def process_signals(
+        self,
+        df: pd.DataFrame,
+        test_type: str | None = None,
+        clinical_tests_cfg: Dict[str, Any] | None = None,
+    ) -> Tuple[pd.DataFrame, Dict[str, Any], np.ndarray, np.ndarray, pd.DataFrame]:
         """
         Execute the full gait processing pipeline.
 
@@ -723,6 +728,14 @@ class GaitDataProcessor:
             "stride_cadence_minute_slope": 0.0,
             "stance_time_minute_slope": 0.0,
             "swing_time_minute_slope": 0.0,
+            # Spatial metrics (only computed when distance is known).
+            # spatial_method documents the source: 'none' (not computed),
+            # 'known_distance' (clinical test with fixed distance from
+            # config), 'gps' or 'imu_zupt' (future work for 6MWT).
+            "spatial_method": "none",
+            "spatial_distance_m": 0.0,
+            "walking_speed_mean_m_s": 0.0,
+            "stride_length_mean_m": 0.0,
         }
 
         # GPS metadata
@@ -881,5 +894,77 @@ class GaitDataProcessor:
                 self.logger.warning(
                     "Less than 2 valid blocks; per-minute slopes left at 0."
                 )
+
+        # ──────────────────────────────────────────────────────────────────
+        # Spatial metrics: walking speed and stride length.
+        # ──────────────────────────────────────────────────────────────────
+        # Strategy 1 (implemented here): tests with KNOWN, fixed distance
+        # such as TUG (6 m) or T25FW (7.62 m). The distance is configured
+        # in `clinical_tests.<test_type>.distance_m` and the velocity is
+        # simply walking_speed = distance / walking_duration. Stride
+        # length follows from velocity * mean stride time.
+        #
+        # Strategies 2 (GPS) and 3 (IMU + ZUPT) for tests without known
+        # distance, like 6MWT, are out of scope of this method and will
+        # be implemented as separate spatial estimators in future work.
+        if (
+            test_type is not None
+            and clinical_tests_cfg
+            and test_type in clinical_tests_cfg
+        ):
+            test_cfg = clinical_tests_cfg[test_type]
+            distance_m = float(test_cfg.get("distance_m", 0.0))
+            min_duration_s = float(test_cfg.get("min_duration_s", 0.0))
+            min_strides = int(test_cfg.get("min_strides", 0))
+            walking_duration_s = float(metrics.get("walking_duration_s", 0.0))
+            stride_time_mean_s = float(metrics.get("stride_time_mean_s", 0.0))
+            # Each pair of consecutive heel strikes defines one stride, so
+            # n_strides = len(peaks) - 1 (matches what we use for stride_time).
+            n_strides = max(0, len(peaks) - 1)
+
+            metrics["spatial_distance_m"] = distance_m
+
+            if distance_m <= 0:
+                self.logger.warning(
+                    f"Configured distance for {test_type} is non-positive "
+                    f"({distance_m}). Spatial metrics not computed."
+                )
+                metrics["spatial_method"] = "none"
+            elif walking_duration_s < min_duration_s:
+                self.logger.warning(
+                    f"{test_type} trial duration ({walking_duration_s:.2f}s) "
+                    f"is below the plausibility threshold "
+                    f"({min_duration_s:.2f}s). Spatial metrics not computed."
+                )
+                metrics["spatial_method"] = "none"
+            elif n_strides < min_strides:
+                self.logger.warning(
+                    f"{test_type} trial has only {n_strides} strides "
+                    f"(below threshold {min_strides}). Stride-time mean "
+                    f"would be unreliable, so spatial metrics are not "
+                    f"computed."
+                )
+                metrics["spatial_method"] = "none"
+            else:
+                walking_speed = distance_m / walking_duration_s
+                metrics["spatial_method"] = "known_distance"
+                metrics["walking_speed_mean_m_s"] = float(walking_speed)
+                if stride_time_mean_s > 0:
+                    metrics["stride_length_mean_m"] = float(
+                        walking_speed * stride_time_mean_s
+                    )
+                self.logger.info(
+                    f"Spatial metrics ({test_type}, known distance "
+                    f"{distance_m:.2f} m, {n_strides} strides): "
+                    f"walking_speed="
+                    f"{metrics['walking_speed_mean_m_s']:.3f} m/s, "
+                    f"stride_length="
+                    f"{metrics['stride_length_mean_m']:.3f} m"
+                )
+        elif test_type is not None:
+            self.logger.info(
+                f"Test type '{test_type}' has no configured distance. "
+                f"Spatial metrics not computed (would require GPS or IMU+ZUPT)."
+            )
 
         return df, metrics, peaks, toe_offs, per_minute_df
