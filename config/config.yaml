@@ -50,3 +50,11 @@ clinical_tests:
     distance_m: 7.62
     min_duration_s: 3.0
     min_strides: 3
+
+# Spatial estimation via GPS for tests without a known fixed distance
+# (typically 6MWT). The filter rejects trials where the GPS does not
+# show enough geographic span — usually indoor sessions where the GPS
+# drifts but the patient does not actually move along a long path.
+gps_estimation:
+  min_span_m: 100.0
+  min_unique_points: 10

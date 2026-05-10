@@ -17,6 +17,7 @@ provides a foundation for fatigue analysis.
 """
 
 import logging
+import math 
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, Tuple, Optional
@@ -24,6 +25,82 @@ from scipy.signal import butter, filtfilt, find_peaks
 from pydantic import BaseModel, ConfigDict,Field
 
 logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Module-level GPS helpers.
+# ──────────────────────────────────────────────────────────────────────
+def haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """
+    Great-circle distance in metres between two GPS points.
+
+    Uses the haversine formula on a spherical Earth model with
+    R = 6_371_000 m. Accuracy is sufficient for path-length estimation
+    over walking distances (sub-metre error for separations under 1 km).
+    """
+    R = 6_371_000.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlmb = math.radians(lng2 - lng1)
+    a = (
+        math.sin(dphi / 2.0) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlmb / 2.0) ** 2
+    )
+    return 2.0 * R * math.asin(math.sqrt(a))
+
+
+def compute_gps_path_metrics(
+    lat_array: np.ndarray, lng_array: np.ndarray
+) -> Dict[str, float]:
+    """
+    Compute path-based GPS metrics from latitude / longitude arrays.
+
+    Parameters
+    ----------
+    lat_array, lng_array : np.ndarray
+        Latitude and longitude in decimal degrees, with NaNs already
+        removed and arrays of equal length.
+
+    Returns
+    -------
+    dict with:
+        - n_unique_points : int. Number of distinct GPS coordinates
+          (lat/lng rounded to 6 decimal places, ~0.1 m precision).
+        - span_m : float. Maximum great-circle distance from the first
+          fix to any other fix. For a back-and-forth walking course
+          this is roughly half of the actual path length.
+        - total_path_m : float. Sum of consecutive haversine
+          distances. Approximates total distance walked, but is
+          biased upward by GPS noise (each random jitter adds path
+          length). For static recordings it should ideally be 0.
+    """
+    n = len(lat_array)
+    if n < 2:
+        return {"n_unique_points": int(n), "span_m": 0.0, "total_path_m": 0.0}
+
+    rounded = np.column_stack(
+        [np.round(lat_array, 6), np.round(lng_array, 6)]
+    )
+    n_unique = int(len(np.unique(rounded, axis=0)))
+
+    distances_from_start = np.array([
+        haversine_m(lat_array[0], lng_array[0], lat_array[i], lng_array[i])
+        for i in range(n)
+    ])
+    span_m = float(distances_from_start.max())
+
+    consecutive = np.array([
+        haversine_m(lat_array[i - 1], lng_array[i - 1], lat_array[i], lng_array[i])
+        for i in range(1, n)
+    ])
+    total_path_m = float(consecutive.sum())
+
+    return {
+        "n_unique_points": n_unique,
+        "span_m": span_m,
+        "total_path_m": total_path_m,
+    }
 
 
 class ProcessConfig(BaseModel):
@@ -570,6 +647,7 @@ class GaitDataProcessor:
         df: pd.DataFrame,
         test_type: str | None = None,
         clinical_tests_cfg: Dict[str, Any] | None = None,
+        gps_estimation_cfg: Dict[str, Any] | None = None,
     ) -> Tuple[pd.DataFrame, Dict[str, Any], np.ndarray, np.ndarray, pd.DataFrame]:
         """
         Execute the full gait processing pipeline.
@@ -736,6 +814,9 @@ class GaitDataProcessor:
             "spatial_distance_m": 0.0,
             "walking_speed_mean_m_s": 0.0,
             "stride_length_mean_m": 0.0,
+            "gps_n_unique_points": 0,
+            "gps_span_m": 0.0,
+            "gps_total_path_m": 0.0,
         }
 
         # GPS metadata
@@ -962,9 +1043,110 @@ class GaitDataProcessor:
                     f"{metrics['stride_length_mean_m']:.3f} m"
                 )
         elif test_type is not None:
-            self.logger.info(
-                f"Test type '{test_type}' has no configured distance. "
-                f"Spatial metrics not computed (would require GPS or IMU+ZUPT)."
+            # ──────────────────────────────────────────────────────
+            # Strategy 2 — GPS-based spatial estimation.
+            # ──────────────────────────────────────────────────────
+            # For tests without a fixed known distance (typically
+            # 6MWT), we attempt to derive walking speed from GPS
+            # fixes. This is only reliable when the patient walked
+            # outdoor and far enough that GPS jitter is dwarfed by
+            # actual displacement. We enforce two quality gates:
+            #
+            #   - span_m >= min_span_m: the patient must reach a
+            #     point at least min_span_m metres from the start.
+            #     This rejects indoor sessions where the GPS drifts
+            #     in place but the patient does not actually travel
+            #     a long path.
+            #   - n_unique_points >= min_unique_points: enough fixes
+            #     to integrate a path. With a 0.06 Hz GPS, a 6-min
+            #     trial yields ~22 unique points; below 10 the path
+            #     reconstruction is too coarse to be meaningful.
+            #
+            # Trials that pass both filters get spatial_method='gps'
+            # and a walking_speed estimated as total_path_m divided
+            # by walking_duration_s. Trials that fail are tagged
+            # spatial_method='none' but the underlying GPS quality
+            # metrics (gps_span_m, gps_n_unique_points,
+            # gps_total_path_m) are still recorded for traceability.
+            gps_cfg = (
+                gps_estimation_cfg if gps_estimation_cfg is not None else {}
             )
+            min_span_m = float(gps_cfg.get("min_span_m", 0.0))
+            min_unique = int(gps_cfg.get("min_unique_points", 0))
+
+            if {"lat", "lng"}.issubset(df.columns):
+                gps_df = (
+                    df[["lat", "lng"]]
+                    .apply(pd.to_numeric, errors="coerce")
+                    .dropna()
+                )
+                if len(gps_df) >= 2:
+                    lat_arr = gps_df["lat"].to_numpy()
+                    lng_arr = gps_df["lng"].to_numpy()
+                    gps_metrics = compute_gps_path_metrics(lat_arr, lng_arr)
+
+                    metrics["gps_n_unique_points"] = gps_metrics["n_unique_points"]
+                    metrics["gps_span_m"] = gps_metrics["span_m"]
+                    metrics["gps_total_path_m"] = gps_metrics["total_path_m"]
+
+                    walking_duration_s = float(
+                        metrics.get("walking_duration_s", 0.0)
+                    )
+                    stride_time_mean_s = float(
+                        metrics.get("stride_time_mean_s", 0.0)
+                    )
+
+                    if gps_metrics["span_m"] < min_span_m:
+                        self.logger.warning(
+                            f"GPS span ({gps_metrics['span_m']:.1f} m) below "
+                            f"threshold ({min_span_m:.1f} m). Likely indoor "
+                            f"session; GPS-based spatial metrics not "
+                            f"computed for {test_type}."
+                        )
+                    elif gps_metrics["n_unique_points"] < min_unique:
+                        self.logger.warning(
+                            f"GPS unique points "
+                            f"({gps_metrics['n_unique_points']}) below "
+                            f"threshold ({min_unique}). Insufficient fixes "
+                            f"for path reconstruction in {test_type}."
+                        )
+                    elif walking_duration_s <= 0:
+                        self.logger.warning(
+                            f"walking_duration_s is non-positive; cannot "
+                            f"derive GPS speed for {test_type}."
+                        )
+                    else:
+                        walking_speed = (
+                            gps_metrics["total_path_m"] / walking_duration_s
+                        )
+                        metrics["spatial_method"] = "gps"
+                        metrics["spatial_distance_m"] = gps_metrics[
+                            "total_path_m"
+                        ]
+                        metrics["walking_speed_mean_m_s"] = float(walking_speed)
+                        if stride_time_mean_s > 0:
+                            metrics["stride_length_mean_m"] = float(
+                                walking_speed * stride_time_mean_s
+                            )
+                        self.logger.info(
+                            f"Spatial metrics ({test_type}, GPS-based): "
+                            f"span={gps_metrics['span_m']:.1f} m, "
+                            f"path={gps_metrics['total_path_m']:.1f} m, "
+                            f"walking_speed="
+                            f"{metrics['walking_speed_mean_m_s']:.3f} m/s, "
+                            f"stride_length="
+                            f"{metrics['stride_length_mean_m']:.3f} m"
+                        )
+                else:
+                    self.logger.info(
+                        f"Test type '{test_type}' has no configured distance "
+                        f"and not enough GPS fixes; spatial metrics not "
+                        f"computed."
+                    )
+            else:
+                self.logger.info(
+                    f"Test type '{test_type}' has no configured distance "
+                    f"and no GPS columns; spatial metrics not computed."
+                )
 
         return df, metrics, peaks, toe_offs, per_minute_df
