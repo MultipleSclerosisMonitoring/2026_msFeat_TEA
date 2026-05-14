@@ -1228,4 +1228,110 @@ class GaitDataProcessor:
                     f"walking_speed={metrics['biometric_walking_speed_m_s']:.3f} m/s"
                 )
 
+        # ── Nivel 3c: IMU + ZUPT via Madgwick ─────────────────────────────
+        # Orientation estimation + world-frame acceleration integration with
+        # Zero-velocity UPdaTes (ZUPT) during stance phases.
+        #
+        # STATUS: Prepared for hardware recalibration to ±8g.
+        # DISABLED by default: the current Sensoria sensor saturates at
+        # ±2g during heel-strike impacts, causing Madgwick to accumulate
+        # orientation drift that makes double integration unreliable.
+        # When the accelerometer range is extended to ±8g (planned), set
+        # imu_zupt.enabled=true in config. The magnetometer should also
+        # be enabled at that point to stabilise the heading reference.
+        imu_cfg = spatial_models_cfg.get("imu_zupt", {})
+        if imu_cfg.get("enabled", False):
+            try:
+                from ahrs.filters import Madgwick as _Madgwick
+                beta = float(imu_cfg.get("madgwick_beta", 0.1))
+                use_mag = bool(imu_cfg.get("use_magnetometer", True))
+
+                # Build input arrays (already resampled and filtered)
+                ax = df["Ax"].to_numpy(dtype=float)
+                ay = df["Ay"].to_numpy(dtype=float)
+                az = df["Az"].to_numpy(dtype=float)
+                gx = np.deg2rad(df["Gx_filt"].to_numpy(dtype=float))
+                gy = np.deg2rad(df["Gy_filt"].to_numpy(dtype=float))
+                gz = np.deg2rad(df["Gz_filt"].to_numpy(dtype=float))
+                acc = np.column_stack([ax, ay, az])
+                gyr = np.column_stack([gx, gy, gz])
+
+                if use_mag and {"Mx", "My", "Mz"}.issubset(df.columns):
+                    mx = pd.to_numeric(df["Mx"], errors="coerce").to_numpy(dtype=float)
+                    my = pd.to_numeric(df["My"], errors="coerce").to_numpy(dtype=float)
+                    mz = pd.to_numeric(df["Mz"], errors="coerce").to_numpy(dtype=float)
+                    mag = np.column_stack([mx, my, mz])
+                    madgwick = _Madgwick(
+                        gyr=gyr, acc=acc, mag=mag,
+                        frequency=self.config.fs, beta=beta,
+                    )
+                else:
+                    madgwick = _Madgwick(
+                        gyr=gyr, acc=acc,
+                        frequency=self.config.fs, beta=beta,
+                    )
+
+                Q = madgwick.Q  # (N, 4): [w, x, y, z]
+
+                # Rotate acceleration to world frame and remove gravity
+                w, qx, qy, qz = Q[:, 0], Q[:, 1], Q[:, 2], Q[:, 3]
+                # Rotation matrix rows for each sample (vectorised)
+                ax_w = (
+                    (1 - 2*(qy**2 + qz**2)) * ax
+                    + 2*(qx*qy - w*qz) * ay
+                    + 2*(qx*qz + w*qy) * az
+                )
+                ay_w = (
+                    2*(qx*qy + w*qz) * ax
+                    + (1 - 2*(qx**2 + qz**2)) * ay
+                    + 2*(qy*qz - w*qx) * az
+                )
+                az_w = (
+                    2*(qx*qz - w*qy) * ax
+                    + 2*(qy*qz + w*qx) * ay
+                    + (1 - 2*(qx**2 + qy**2)) * az
+                )
+                # Remove gravity (world Z is vertical, ~1g upward)
+                az_w_net = az_w - 1.0  # g units
+
+                # ZUPT: zero velocity during stance phases
+                dt = 1.0 / self.config.fs
+                vel = np.zeros(len(ax_w))
+                is_stance = ~df["is_turning"].to_numpy(dtype=bool)
+                # Simple integration with ZUPT reset at each stance sample
+                for i in range(1, len(vel)):
+                    vel[i] = vel[i - 1] + az_w_net[i] * dt * 9.81
+                    if is_stance[i]:
+                        vel[i] = 0.0
+
+                # Integrate velocity to position
+                pos = np.cumsum(vel) * dt
+                total_displacement_m = float(np.abs(pos[-1] - pos[0]))
+                walking_dur = float(metrics.get("walking_duration_s", 0.0))
+
+                if walking_dur > 0 and total_displacement_m > 0:
+                    speed_zupt = total_displacement_m / walking_dur
+                    metrics["spatial_method"] = "imu_zupt"
+                    metrics["spatial_distance_m"] = total_displacement_m
+                    metrics["walking_speed_mean_m_s"] = float(speed_zupt)
+                    st = float(metrics.get("stride_time_mean_s", 0.0))
+                    if st > 0:
+                        metrics["stride_length_mean_m"] = float(speed_zupt * st)
+                    self.logger.info(
+                        f"IMU+ZUPT: displacement={total_displacement_m:.1f} m, "
+                        f"walking_speed={speed_zupt:.3f} m/s"
+                    )
+                else:
+                    self.logger.warning(
+                        "IMU+ZUPT: displacement or duration is zero; "
+                        "spatial metrics not updated."
+                    )
+            except ImportError:
+                self.logger.warning(
+                    "ahrs library not found; IMU+ZUPT disabled. "
+                    "Install with: pip install ahrs"
+                )
+            except Exception as exc:
+                self.logger.warning(f"IMU+ZUPT failed: {exc}")
+
         return df, metrics, peaks, toe_offs, per_minute_df

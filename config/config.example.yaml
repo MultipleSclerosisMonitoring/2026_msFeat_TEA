@@ -75,4 +75,11 @@ spatial_models:
   biometric:
     K: 0.196922
     enabled: true
+  # IMU + ZUPT via Madgwick filter (prepared for recalibrated ±8g accelerometer).
+  # Currently disabled: accelerometer saturates at ±2g, causing orientation drift.
+  # Enable when hardware is recalibrated to ±8g.
+  imu_zupt:
+    enabled: false
+    madgwick_beta: 0.1
+    use_magnetometer: true
   
