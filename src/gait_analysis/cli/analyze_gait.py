@@ -321,14 +321,10 @@ def main() -> None:
         logger.info(f"Execution timestamp: {pd.Timestamp.now()}")
 
 
-        process_config = ProcessConfig(
-            fs=processing_cfg.get("fs", 100.0),
-            cutoff_pressure=processing_cfg.get("cutoff_pressure", 5.0),
-            cutoff_gyro=processing_cfg.get("cutoff_gyro", 2.0),
-            gyro_threshold=processing_cfg.get("gyro_threshold", 50.0),
-            min_peak_distance_s=processing_cfg.get("min_peak_distance_s", 0.5),
-            min_peak_height=processing_cfg.get("min_peak_height", 0.2),
-        )
+        process_config = ProcessConfig(**{
+            k: v for k, v in processing_cfg.items()
+            if k in ProcessConfig.model_fields
+        })
 
         logger.info("Processing configuration:")
         logger.info(f"  fs = {process_config.fs}")

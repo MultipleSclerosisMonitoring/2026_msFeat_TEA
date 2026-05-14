@@ -169,6 +169,7 @@ class ProcessConfig(BaseModel):
     min_peak_height: float = Field(default=0.2)
     minute_block_duration_s: float = Field(default=60.0, ge=5.0)
     edge_threshold: float = Field(default=0.5, ge=0.05, le=0.95)
+    toe_off_threshold: float = Field(default=0.3, ge=0.05, le=0.95)
 
 
 class GaitDataProcessor:
@@ -445,25 +446,25 @@ class GaitDataProcessor:
         else:
             s2_norm = np.zeros_like(s2_filt)
 
-        threshold = float(self.config.edge_threshold)
+        hs_threshold = float(self.config.edge_threshold)
+        to_threshold = float(self.config.toe_off_threshold)
         n = len(s2_norm)
-
         heel_strikes: list = []
         toe_offs: list = []
-
         for i, v_idx in enumerate(valleys):
             next_v = valleys[i + 1] if i + 1 < len(valleys) else n
-
             # Heel Strike: first rising-edge crossing AFTER the valley.
             segment_after_valley = s2_norm[v_idx:next_v]
-            above = np.where(segment_after_valley > threshold)[0]
+            above = np.where(segment_after_valley > hs_threshold)[0]
             if len(above) == 0:
                 continue
             hs_idx = v_idx + above[0]
-
             # Toe-Off: first falling-edge crossing AFTER the heel strike.
+            # A lower threshold than HS detects the lift-off earlier,
+            # avoiding the systematic overestimation of stance duration
+            # that occurs when the same threshold is used for both events.
             segment_after_hs = s2_norm[hs_idx:next_v]
-            below = np.where(segment_after_hs < threshold)[0]
+            below = np.where(segment_after_hs < to_threshold)[0]
             if len(below) == 0:
                 continue
             to_idx = hs_idx + below[0]
@@ -791,7 +792,8 @@ class GaitDataProcessor:
         )
 
         self.logger.debug(
-            f"Edge threshold for HS/TO detection: {self.config.edge_threshold:.2f} "
+            f"Edge threshold: HS={self.config.edge_threshold:.2f}, "
+            f"TO={self.config.toe_off_threshold:.2f} "
             f"(applied on signal normalized to [0, 1])"
         )
         self.logger.debug(
