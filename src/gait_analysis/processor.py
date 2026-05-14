@@ -103,6 +103,33 @@ def compute_gps_path_metrics(
     }
 
 
+def compute_mean_swing_gyro_integral(
+    df: pd.DataFrame,
+    peaks: np.ndarray,
+    toe_offs: np.ndarray,
+    fs: float,
+) -> float:
+    """Mean integral of gyroscope L2 norm during swing phases (deg).
+    Used by gyro-norm spatial model: stride_length = K * result.
+    Returns 0.0 if no valid swings."""
+    if len(peaks) < 2 or len(toe_offs) < 1:
+        return 0.0
+    gx = df["Gx_filt"].to_numpy()
+    gy = df["Gy_filt"].to_numpy()
+    gz = df["Gz_filt"].to_numpy()
+    gyro_norm = np.sqrt(gx**2 + gy**2 + gz**2)
+    dt = 1.0 / fs
+    n_swings = min(len(toe_offs), len(peaks) - 1)
+    integrals = []
+    for i in range(n_swings):
+        to_idx = int(toe_offs[i])
+        next_hs = int(peaks[i + 1])
+        if next_hs <= to_idx:
+            continue
+        integrals.append(float(np.trapezoid(gyro_norm[to_idx:next_hs], dx=dt)))
+    return float(np.mean(integrals)) if integrals else 0.0
+
+
 class ProcessConfig(BaseModel):
     """
     Configuration schema for gait signal processing parameters.
@@ -648,6 +675,7 @@ class GaitDataProcessor:
         test_type: str | None = None,
         clinical_tests_cfg: Dict[str, Any] | None = None,
         gps_estimation_cfg: Dict[str, Any] | None = None,
+        spatial_models_cfg: Dict[str, Any] | None = None,
     ) -> Tuple[pd.DataFrame, Dict[str, Any], np.ndarray, np.ndarray, pd.DataFrame]:
         """
         Execute the full gait processing pipeline.
@@ -817,6 +845,10 @@ class GaitDataProcessor:
             "gps_n_unique_points": 0,
             "gps_span_m": 0.0,
             "gps_total_path_m": 0.0,
+            "gyro_norm_stride_length_m": 0.0,
+            "gyro_norm_walking_speed_m_s": 0.0,
+            "biometric_stride_length_m": 0.0,
+            "biometric_walking_speed_m_s": 0.0,
         }
 
         # GPS metadata
@@ -1147,6 +1179,53 @@ class GaitDataProcessor:
                 self.logger.info(
                     f"Test type '{test_type}' has no configured distance "
                     f"and no GPS columns; spatial metrics not computed."
+                )
+
+        # ── Nivel 3a: Gyro-norm model ─────────────────────────────────────
+        # stride_length = K_gyro * mean(integral ||G|| during swing)
+        # Orientation-invariant. Active for all test types when enabled.
+        spatial_models_cfg = (
+            spatial_models_cfg if spatial_models_cfg is not None else {}
+        )
+        gyro_cfg = spatial_models_cfg.get("gyro_norm", {})
+        bio_cfg = spatial_models_cfg.get("biometric", {})
+        stride_time_mean_s = float(metrics.get("stride_time_mean_s", 0.0))
+        cadence_spm = float(metrics.get("stride_cadence_spm", 0.0))
+
+        if gyro_cfg.get("enabled", False):
+            K_gyro = float(gyro_cfg.get("K", 0.0))
+            gyro_int = compute_mean_swing_gyro_integral(
+                df, peaks, toe_offs, self.config.fs
+            )
+            if K_gyro > 0 and gyro_int > 0:
+                sl_gyro = K_gyro * gyro_int
+                metrics["gyro_norm_stride_length_m"] = float(sl_gyro)
+                if stride_time_mean_s > 0:
+                    metrics["gyro_norm_walking_speed_m_s"] = float(
+                        sl_gyro / stride_time_mean_s
+                    )
+                self.logger.info(
+                    f"Gyro-norm model: gyro_int={gyro_int:.3f} deg, "
+                    f"stride_length={sl_gyro:.3f} m, "
+                    f"walking_speed={metrics['gyro_norm_walking_speed_m_s']:.3f} m/s"
+                )
+
+        # ── Nivel 3b: Biometric model ──────────────────────────────────────
+        # stride_length = K_bio * sqrt(cadence_spm)
+        # Weinbach-type regression. Requires no IMU integration.
+        if bio_cfg.get("enabled", False):
+            K_bio = float(bio_cfg.get("K", 0.0))
+            if K_bio > 0 and cadence_spm > 0:
+                sl_bio = K_bio * math.sqrt(cadence_spm)
+                metrics["biometric_stride_length_m"] = float(sl_bio)
+                if stride_time_mean_s > 0:
+                    metrics["biometric_walking_speed_m_s"] = float(
+                        sl_bio / stride_time_mean_s
+                    )
+                self.logger.info(
+                    f"Biometric model: cadence={cadence_spm:.1f} spm, "
+                    f"stride_length={sl_bio:.3f} m, "
+                    f"walking_speed={metrics['biometric_walking_speed_m_s']:.3f} m/s"
                 )
 
         return df, metrics, peaks, toe_offs, per_minute_df

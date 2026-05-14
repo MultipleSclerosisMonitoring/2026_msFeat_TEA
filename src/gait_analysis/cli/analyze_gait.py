@@ -372,11 +372,13 @@ def main() -> None:
             logger.info(f"Detected clinical test type: {test_type}")
         clinical_tests_cfg = config.get("clinical_tests", {})
         gps_estimation_cfg = config.get("gps_estimation", {})
+        spatial_models_cfg = config.get("spatial_models", {})
         df_proc, metrics, peaks, toe_offs, per_minute_df = processor.process_signals(
             df_raw,
             test_type=test_type,
             clinical_tests_cfg=clinical_tests_cfg,
             gps_estimation_cfg=gps_estimation_cfg,
+            spatial_models_cfg=spatial_models_cfg,
         )
         metrics["analysis_h5_key"] = h5_key
         metrics["analysis_timestamp"] = str(pd.Timestamp.now())

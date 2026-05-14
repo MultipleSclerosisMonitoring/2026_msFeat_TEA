@@ -59,4 +59,20 @@ clinical_tests:
   gps_estimation:
     min_span_m: 100.0
     min_unique_points: 10
+
+  # Spatial estimation models for 6MWT indoor trials where GPS is not
+# available. Both models are calibrated using 5 outdoor GPS trials
+# from 3 patients. Constants are sensor- and population-specific;
+# recalibrate when hardware changes.
+spatial_models:
+  # Gyro-norm model: stride_length = K_gyro * integral(|G|) during swing.
+  # Invariant to sensor orientation. RMSE ~21% on calibration set.
+  gyro_norm:
+    K: 0.045026
+    enabled: true
+  # Biometric model: stride_length = K_bio * sqrt(cadence_spm).
+  # Based on Weinbach-type regression. RMSE ~11% on calibration set.
+  biometric:
+    K: 0.196922
+    enabled: true
   
