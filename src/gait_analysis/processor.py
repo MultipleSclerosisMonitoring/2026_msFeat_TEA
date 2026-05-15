@@ -292,7 +292,12 @@ class ProcessConfig(BaseModel):
     min_peak_height: float = Field(default=0.2)
     minute_block_duration_s: float = Field(default=60.0, ge=5.0)
     edge_threshold: float = Field(default=0.5, ge=0.05, le=0.95)
-    toe_off_threshold: float = Field(default=0.3, ge=0.05, le=0.95)
+    toe_off_threshold: float = Field(default=0.5, ge=0.05, le=0.95)
+    toe_off_method: str = Field(default="threshold")
+    # 'threshold': first falling-edge crossing below toe_off_threshold.
+    # 'derivative': point of maximum negative slope in the S2 signal
+    #               after heel strike (more robust, independent of
+    #               signal baseline).
 
 
 class GaitDataProcessor:
@@ -582,15 +587,31 @@ class GaitDataProcessor:
             if len(above) == 0:
                 continue
             hs_idx = v_idx + above[0]
-            # Toe-Off: first falling-edge crossing AFTER the heel strike.
-            # A lower threshold than HS detects the lift-off earlier,
-            # avoiding the systematic overestimation of stance duration
-            # that occurs when the same threshold is used for both events.
+            # Toe-Off detection: two methods available via toe_off_method.
             segment_after_hs = s2_norm[hs_idx:next_v]
-            below = np.where(segment_after_hs < to_threshold)[0]
-            if len(below) == 0:
+            if len(segment_after_hs) < 2:
                 continue
-            to_idx = hs_idx + below[0]
+            if self.config.toe_off_method == "derivative":
+                # Point of maximum negative slope: the sample where the
+                # pressure signal falls fastest, which corresponds to the
+                # actual foot lift-off. More robust than threshold crossing
+                # because it is independent of the signal baseline level.
+                deriv = np.diff(segment_after_hs)
+                neg_mask = deriv < 0
+                if not np.any(neg_mask):
+                    # No falling segment: fall back to threshold method
+                    below = np.where(segment_after_hs < to_threshold)[0]
+                    if len(below) == 0:
+                        continue
+                    to_idx = hs_idx + below[0]
+                else:
+                    to_idx = hs_idx + int(np.argmin(deriv)) + 1
+            else:
+                # threshold method: first falling-edge crossing
+                below = np.where(segment_after_hs < to_threshold)[0]
+                if len(below) == 0:
+                    continue
+                to_idx = hs_idx + below[0]
 
             heel_strikes.append(hs_idx)
             toe_offs.append(to_idx)
