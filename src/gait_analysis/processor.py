@@ -130,6 +130,129 @@ def compute_mean_swing_gyro_integral(
     return float(np.mean(integrals)) if integrals else 0.0
 
 
+def compute_bilateral_metrics(
+    metrics_left: Dict[str, Any],
+    metrics_right: Dict[str, Any],
+    peaks_left: np.ndarray,
+    peaks_right: np.ndarray,
+    toe_offs_left: np.ndarray,
+    toe_offs_right: np.ndarray,
+    df_left: pd.DataFrame,
+    df_right: pd.DataFrame,
+) -> Dict[str, Any]:
+    """
+    Compute bilateral gait metrics from paired left and right foot data.
+
+    Calculates stride asymmetry and double support time, which require
+    simultaneous knowledge of events from both feet. Asymmetry is
+    expressed as the absolute percentage difference between feet,
+    following the convention of Plotnik et al. (2020). Double support
+    time is the interval during which both feet are simultaneously in
+    contact with the ground, computed as the overlap between the stance
+    phase of one foot and the stance phase of the contralateral foot.
+
+    Parameters
+    ----------
+    metrics_left, metrics_right : dict
+        Trial-wide metrics already computed by process_signals for each foot.
+    peaks_left, peaks_right : np.ndarray
+        Heel-strike indices for each foot.
+    toe_offs_left, toe_offs_right : np.ndarray
+        Toe-off indices for each foot.
+    df_left, df_right : pd.DataFrame
+        Processed dataframes with '_time' column for each foot.
+
+    Returns
+    -------
+    dict with bilateral metrics, all prefixed with 'bilateral_'.
+    """
+    result: Dict[str, Any] = {
+        "bilateral_stride_time_asymmetry_pct": 0.0,
+        "bilateral_cadence_asymmetry_pct": 0.0,
+        "bilateral_stance_time_asymmetry_pct": 0.0,
+        "bilateral_double_support_mean_s": 0.0,
+        "bilateral_double_support_pct": 0.0,
+        "bilateral_available": False,
+    }
+
+    # ── Asymmetry metrics ────────────────────────────────────────────
+    def _asymmetry_pct(val_l: float, val_r: float) -> float:
+        """Absolute % difference relative to the mean of both values."""
+        mean = (val_l + val_r) / 2.0
+        if mean <= 0:
+            return 0.0
+        return float(abs(val_l - val_r) / mean * 100.0)
+
+    st_l = float(metrics_left.get("stride_time_mean_s", 0.0))
+    st_r = float(metrics_right.get("stride_time_mean_s", 0.0))
+    cad_l = float(metrics_left.get("stride_cadence_spm", 0.0))
+    cad_r = float(metrics_right.get("stride_cadence_spm", 0.0))
+    stance_l = float(metrics_left.get("stance_time_mean_s", 0.0))
+    stance_r = float(metrics_right.get("stance_time_mean_s", 0.0))
+
+    if st_l > 0 and st_r > 0:
+        result["bilateral_stride_time_asymmetry_pct"] = _asymmetry_pct(st_l, st_r)
+        result["bilateral_cadence_asymmetry_pct"] = _asymmetry_pct(cad_l, cad_r)
+    if stance_l > 0 and stance_r > 0:
+        result["bilateral_stance_time_asymmetry_pct"] = _asymmetry_pct(stance_l, stance_r)
+
+    # ── Double support time ──────────────────────────────────────────
+    # Double support occurs when HS of one foot falls before the TO of
+    # the contralateral foot. We need a shared time axis, so we use
+    # absolute timestamps from the dataframes.
+    if (
+        len(peaks_left) < 2 or len(toe_offs_left) < 1
+        or len(peaks_right) < 2 or len(toe_offs_right) < 1
+    ):
+        result["bilateral_available"] = st_l > 0 and st_r > 0
+        return result
+
+    try:
+        # Use the earliest timestamp across both feet as the common
+        # time origin, so that absolute event times are comparable.
+        t0 = min(
+            pd.to_datetime(df_left["_time"].iloc[0]),
+            pd.to_datetime(df_right["_time"].iloc[0]),
+        )
+
+        def to_sec(df: pd.DataFrame, idx: np.ndarray) -> np.ndarray:
+            return (
+                (pd.to_datetime(df["_time"].iloc[idx]) - t0)
+                / np.timedelta64(1, "s")
+            ).astype(float).to_numpy()
+
+        hs_l = to_sec(df_left, peaks_left)
+        to_l = to_sec(df_left, toe_offs_left)
+        hs_r = to_sec(df_right, peaks_right)
+        to_r = to_sec(df_right, toe_offs_right)
+
+        # For each left stance [hs_l[i], to_l[i]], find overlap with
+        # right stance phases [hs_r[j], to_r[j]].
+        n_l = min(len(hs_l), len(to_l))
+        n_r = min(len(hs_r), len(to_r))
+        ds_intervals = []
+        for i in range(n_l):
+            for j in range(n_r):
+                overlap_start = max(hs_l[i], hs_r[j])
+                overlap_end = min(to_l[i], to_r[j])
+                if overlap_end > overlap_start:
+                    ds_intervals.append(overlap_end - overlap_start)
+
+        if ds_intervals:
+            ds_mean = float(np.mean(ds_intervals))
+            stride_mean = (st_l + st_r) / 2.0
+            result["bilateral_double_support_mean_s"] = ds_mean
+            result["bilateral_double_support_pct"] = (
+                float(ds_mean / stride_mean * 100.0) if stride_mean > 0 else 0.0
+            )
+
+        result["bilateral_available"] = True
+
+    except Exception:
+        pass
+
+    return result
+
 class ProcessConfig(BaseModel):
     """
     Configuration schema for gait signal processing parameters.

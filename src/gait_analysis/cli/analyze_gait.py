@@ -15,7 +15,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from gait_analysis.processor import GaitDataProcessor, ProcessConfig
+from gait_analysis.processor import GaitDataProcessor, ProcessConfig, compute_bilateral_metrics
 from gait_analysis.utils.config_loader import load_project_config
 from gait_analysis.utils.logging_config import setup_logging
 from gait_analysis.utils.messages import get_message
@@ -40,6 +40,26 @@ def build_keyed_output_path(base_path: Path, h5_key: str) -> Path:
     safe_key = h5_key.strip("/").replace("/", "_")
     safe_key = re.sub(r"[^A-Za-z0-9._-]+", "_", safe_key)
     return base_path.with_name(f"{base_path.stem}_{safe_key}{base_path.suffix}")
+
+def get_contralateral_key(h5_key: str) -> str | None:
+    """
+    Return the HDF5 key for the contralateral foot of the same trial.
+
+    Swaps the foot segment (last path component) between 'Left' and
+    'Right'. Returns None if the key does not end in a recognised foot
+    label.
+    """
+    parts = h5_key.strip("/").split("/")
+    if len(parts) < 4:
+        return None
+    foot = parts[-1]
+    if foot == "Left":
+        parts[-1] = "Right"
+    elif foot == "Right":
+        parts[-1] = "Left"
+    else:
+        return None
+    return "/".join(parts)
 
 def parse_test_type_from_h5_key(h5_key: str) -> str | None:
     """
@@ -378,6 +398,55 @@ def main() -> None:
         )
         metrics["analysis_h5_key"] = h5_key
         metrics["analysis_timestamp"] = str(pd.Timestamp.now())
+
+        # ── Fusión bilateral ──────────────────────────────────────────────
+        # Attempt to load and process the contralateral foot for the same
+        # trial. If the key exists in the HDF5, compute asymmetry and
+        # double-support metrics. If not (missing foot data), bilateral
+        # metrics remain at their default zero values.
+        contra_key = get_contralateral_key(h5_key)
+        if contra_key:
+            try:
+                df_contra = pd.read_hdf(h5_path, key=contra_key)
+                if not df_contra.empty:
+                    logger.info(f"Contralateral key found: {contra_key}")
+                    df_contra_proc, metrics_contra, peaks_contra, toe_offs_contra, _ = (
+                        processor.process_signals(
+                            df_contra,
+                            test_type=test_type,
+                            clinical_tests_cfg=clinical_tests_cfg,
+                            gps_estimation_cfg=gps_estimation_cfg,
+                            spatial_models_cfg=spatial_models_cfg,
+                        )
+                    )
+                    # Determine which foot is left and which is right
+                    foot = h5_key.strip("/").split("/")[-1]
+                    if foot == "Left":
+                        bil = compute_bilateral_metrics(
+                            metrics, metrics_contra,
+                            peaks, peaks_contra,
+                            toe_offs, toe_offs_contra,
+                            df_proc, df_contra_proc,
+                        )
+                    else:
+                        bil = compute_bilateral_metrics(
+                            metrics_contra, metrics,
+                            peaks_contra, peaks,
+                            toe_offs_contra, toe_offs,
+                            df_contra_proc, df_proc,
+                        )
+                    metrics.update(bil)
+                    logger.info(
+                        f"Bilateral metrics: "
+                        f"stride_asymmetry={bil['bilateral_stride_time_asymmetry_pct']:.1f}%, "
+                        f"double_support={bil['bilateral_double_support_mean_s']*1000:.1f} ms "
+                        f"({bil['bilateral_double_support_pct']:.1f}% of stride)"
+                    )
+            except (KeyError, OSError):
+                logger.info(
+                    f"Contralateral key not found ({contra_key}); "
+                    f"bilateral metrics not computed."
+                )
         metrics["processing_fs_hz"] = process_config.fs
         metrics["processing_cutoff_pressure_hz"] = process_config.cutoff_pressure
         metrics["processing_cutoff_gyro_hz"] = process_config.cutoff_gyro
