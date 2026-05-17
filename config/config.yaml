@@ -13,7 +13,7 @@ processing:
   cutoff_pressure: 20.0
   cutoff_gyro: 5.0
   gyro_threshold: 150.0
-  min_peak_distance_s: 0.5
+  min_peak_distance_s: 0.6
   min_peak_height: 0.4
   minute_block_duration_s: 60.0
   edge_threshold: 0.5

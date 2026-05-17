@@ -103,6 +103,10 @@ def compute_gps_path_metrics(
     }
 
 
+# NumPy >= 2.0 renamed trapz to trapezoid; support both versions.
+_trapz = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
+
+
 def compute_mean_swing_gyro_integral(
     df: pd.DataFrame,
     peaks: np.ndarray,
@@ -114,6 +118,7 @@ def compute_mean_swing_gyro_integral(
     Returns 0.0 if no valid swings."""
     if len(peaks) < 2 or len(toe_offs) < 1:
         return 0.0
+    
     gx = df["Gx_filt"].to_numpy()
     gy = df["Gy_filt"].to_numpy()
     gz = df["Gz_filt"].to_numpy()
@@ -126,7 +131,8 @@ def compute_mean_swing_gyro_integral(
         next_hs = int(peaks[i + 1])
         if next_hs <= to_idx:
             continue
-        integrals.append(float(np.trapezoid(gyro_norm[to_idx:next_hs], dx=dt)))
+        integrals.append(float(_trapz(gyro_norm[to_idx:next_hs], dx=dt)))
+    
     return float(np.mean(integrals)) if integrals else 0.0
 
 
@@ -321,7 +327,7 @@ class ProcessConfig(BaseModel):
     cutoff_pressure: float = Field(default=20.0, ge=0.1)
     cutoff_gyro: float = Field(default=5.0, ge=0.1)
     gyro_threshold: float = Field(default=150.0)
-    min_peak_distance_s: float = Field(default=0.5, ge=0.05)
+    min_peak_distance_s: float = Field(default=0.6, ge=0.05)
     min_peak_height: float = Field(default=0.4)
     minute_block_duration_s: float = Field(default=60.0, ge=5.0)
     edge_threshold: float = Field(default=0.5, ge=0.05, le=0.95)
@@ -593,10 +599,11 @@ class GaitDataProcessor:
         min_peak_distance_samples = max(
             1, int(self.config.min_peak_distance_s * self.config.fs)
         )
+        
         valleys, _ = find_peaks(
             s2_inv_norm,
             distance=min_peak_distance_samples,
-            height=self.config.min_peak_height,
+            prominence=self.config.min_peak_height,
         )
 
         # 2. Upright normalized signal for threshold-crossing detection.
@@ -937,7 +944,17 @@ class GaitDataProcessor:
                 + df["Gz_filt"] ** 2
             )
             df["gyro_magnitude"] = gyro_magnitude
+
+            # Turn detection using a fixed threshold on the filtered gyro
+            # magnitude. An adaptive envelope approach (0.5 Hz low-pass on
+            # raw gyro magnitude) was evaluated but found unsuitable for
+            # this sensor: normal gait already produces gyro magnitudes of
+            # ~170 deg/s mean, making the envelope indistinguishable from
+            # turn events. The fixed threshold on the 5 Hz filtered signal
+            # remains the most reliable approach for this hardware.
+            # The threshold is configurable in config.yaml.
             df["is_turning"] = gyro_magnitude > self.config.gyro_threshold
+
         else:
             df["is_turning"] = False
             missing = [a for a in gyro_axes if a not in df.columns]
