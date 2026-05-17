@@ -261,7 +261,7 @@ class TestComputeBilateralMetrics:
         assert result["bilateral_double_support_mean_s"] > 0.0
 
     def test_missing_events_returns_unavailable(self):
-        """If one foot has < 2 peaks, bilateral should gracefully return zeros."""
+        """If one foot has < 2 peaks, bilateral metrics should be NaN."""
         m = _make_metrics(1.0, 60.0, 0.65)
         df_l, peaks_l, to_l = self._make_df_with_events(8)
         df_r = df_l.copy()
@@ -271,7 +271,11 @@ class TestComputeBilateralMetrics:
             to_l, np.array([], dtype=int),
             df_l, df_r,
         )
-        assert result["bilateral_double_support_mean_s"] == 0.0
+        # Double support requires peak timestamps — NaN when peaks are missing
+        assert np.isnan(result["bilateral_double_support_mean_s"])
+        assert np.isnan(result["bilateral_double_support_pct"])
+        # Asymmetry is computed from metrics dicts (valid here) so it calculates
+        assert result["bilateral_stride_time_asymmetry_pct"] == pytest.approx(0.0)
 
 
 # ── 5. ProcessConfig ──────────────────────────────────────────────────────────

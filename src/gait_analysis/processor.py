@@ -168,11 +168,11 @@ def compute_bilateral_metrics(
         Bilateral metrics, all prefixed with ``bilateral_``.
     """
     result: Dict[str, Any] = {
-        "bilateral_stride_time_asymmetry_pct": 0.0,
-        "bilateral_cadence_asymmetry_pct": 0.0,
-        "bilateral_stance_time_asymmetry_pct": 0.0,
-        "bilateral_double_support_mean_s": 0.0,
-        "bilateral_double_support_pct": 0.0,
+        "bilateral_stride_time_asymmetry_pct": np.nan,
+        "bilateral_cadence_asymmetry_pct": np.nan,
+        "bilateral_stance_time_asymmetry_pct": np.nan,
+        "bilateral_double_support_mean_s": np.nan,
+        "bilateral_double_support_pct": np.nan,
         "bilateral_available": False,
     }
 
@@ -205,6 +205,8 @@ def compute_bilateral_metrics(
         len(peaks_left) < 2 or len(toe_offs_left) < 1
         or len(peaks_right) < 2 or len(toe_offs_right) < 1
     ):
+        # Asymmetry computed but double support requires timestamp alignment.
+        # Leave double support as NaN if timestamp processing fails later.
         result["bilateral_available"] = st_l > 0 and st_r > 0
         return result
 
