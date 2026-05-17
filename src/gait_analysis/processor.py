@@ -293,7 +293,7 @@ class ProcessConfig(BaseModel):
     minute_block_duration_s: float = Field(default=60.0, ge=5.0)
     edge_threshold: float = Field(default=0.5, ge=0.05, le=0.95)
     toe_off_threshold: float = Field(default=0.5, ge=0.05, le=0.95)
-    toe_off_method: str = Field(default="threshold")
+    toe_off_method: str = Field(default="derivative")
     # 'threshold': first falling-edge crossing below toe_off_threshold.
     # 'derivative': point of maximum negative slope in the S2 signal
     #               after heel strike (more robust, independent of
