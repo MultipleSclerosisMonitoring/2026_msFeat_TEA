@@ -1,63 +1,53 @@
 # Configuration
 
-## Overview
-
-The MS-Feat pipeline is fully driven by external configuration files.
-
-All runtime parameters are defined in YAML format, which ensures reproducibility, flexibility, and separation between code and execution settings.
-
+All runtime parameters are defined in YAML. No hardcoded values in code.
 
 ## Files
 
-### config.yaml
+| File | Purpose |
+|---|---|
+| `config.example.yaml` | Versioned template — copy this to start |
+| `config.yaml` | Local config — not versioned, never commit |
+| `.env.example` | Versioned secrets template |
+| `.env` | Local secrets — never commit |
 
-Main configuration file used during execution.
-
-It defines:
-
-- InfluxDB connection settings
-- Input and output paths
-- Signal processing parameters
-- Logging verbosity
-- Language settings
-- Execution options
-
-
-### config.example.yaml
-
-Template configuration file versioned in the repository.
-
-This file provides a safe starting point and must be copied before running the pipeline.
-
-## Usage
-
-Create a local configuration file from the template:
+## Setup
 
 ```bash
 cp config/config.example.yaml config/config.yaml
 cp .env.example .env
+# Edit config.yaml and .env with your values
 ```
 
-The CLI automatically loads `.env` from the project root and resolves
-`${VAR_NAME}` placeholders referenced inside `config/config.yaml`.
+## Sections
 
-## Design Principles
+### project
+Language (`es`/`en`) and verbosity level (0–3).
 
-- No hardcoded paths in code
-- Full separation between configuration and implementation
-- Reproducible experiments
-- Environment-independent execution
+### paths
+Input HDF5 path, registry CSV path, output metrics and plot paths.
 
+### processing
+Signal processing parameters: sampling frequency, filter cutoffs,
+gyroscope threshold, peak detection settings, toe-off method.
 
-## Execution
+### analysis
+Default HDF5 key used by `analyze-gait` when `--h5-key` is not provided.
 
-The configuration file is used by both CLI commands:
-```bash
-poetry run extract-data --config config/config.yaml
-poetry run analyze-gait --config config/config.yaml
-```
+### influxdb / postgresql
+Connection settings. All values must be set as `${VAR_NAME}` resolved
+from `.env`. Never write credentials directly in the YAML.
 
-## Notes
-- `.env` may contain sensitive information and should not be versioned
-- config.example.yaml is the version intended to be shared in the repository
-- All runtime behavior should be controlled from configuration rather than modifying the source code
+### clinical_tests
+Protocol distances and plausibility thresholds for TUG and T25FW:
+`distance_m`, `min_duration_s`, `min_strides`.
+
+### gps_estimation
+Quality filters for GPS-based spatial estimation (6MWT outdoor):
+`min_span_m`, `min_unique_points`.
+
+### spatial_models
+Constants and enable flags for the three inertial spatial estimators:
+- `gyro_norm.K` — gyroscope integral model (RMSE ~21%)
+- `biometric.K` — cadence regression model (RMSE ~11%)
+- `imu_zupt.enabled` — Madgwick + ZUPT (disabled until ±8g recalibration)

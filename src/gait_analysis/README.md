@@ -1,74 +1,36 @@
-# gait_analysis: Core Module
+# gait_analysis: Core Package
 
-## Overview
+Core logic of the MS-Feat framework. Fully driven by external
+configuration; no hardcoded paths or parameters.
 
-This package contains the core implementation of the MS-Feat framework.
-
-It provides the main logic for data extraction, signal processing, and computation of gait-related features. The module is designed to be independent of the user interface and fully driven by external configuration.
-
-
-## Structure
-
-The module is organized into the following components:
+## Modules
 
 ### extractor.py
-
-Responsible for:
-
-- Connecting to InfluxDB
-- Querying high-frequency sensor data
-- Validating data structure
-- Storing extracted data in HDF5 format
-
+- Connects to InfluxDB and queries sensor time-series
+- Validates required columns (S2, _time, Foot) via Pydantic
+- Persists data to HDF5 with hierarchical keys:
+  `p_<codeid>/<test>/start_<timestamp>/<foot>`
 
 ### processor.py
+Public API:
+- `GaitDataProcessor.process_signals()` — full pipeline for one trial
+- `compute_bilateral_metrics()` — asymmetry and double support from L+R
+- `compute_gps_path_metrics()` — GPS path length via haversine
+- `compute_mean_swing_gyro_integral()` — gyro-norm spatial estimator
+- `haversine_m()` — great-circle distance between two GPS points
 
-Implements:
+Pipeline stages inside `process_signals()`:
+1. Chronological sorting and uniform resampling (100 Hz)
+2. Automatic vertical axis detection (gravity-based)
+3. Zero-phase Butterworth filtering (S2: 20 Hz, gyro: 5 Hz)
+4. Turn detection via L2 gyroscope norm
+5. Heel Strike and Toe-Off detection (valley + threshold / derivative)
+6. Temporal metrics: stride time, cadence, stance, swing, CV
+7. Fatigue analysis: linear slopes over 60-second blocks
+8. Spatial metrics: known distance / GPS / gyro-norm / biometric model
+9. Bilateral fusion: asymmetry and double support (via CLI)
 
-### processor.py
-
-Implements:
-
-- Uniform resampling and zero-phase signal filtering
-- Automatic detection of the vertical inertial axis
-- Turn segmentation based on gyroscope magnitude
-- Detection of Heel Strike events from plantar pressure
-- Computation of spatiotemporal gait parameters
-- Baseline estimation of fatigue-sensitive temporal trends
-
-
-## Responsibilities
-
-This module is responsible for:
-
-- Domain-specific processing logic
-- Data transformation and analysis
-- Implementation of biomechanical algorithms
-
-
-## Non-responsibilities
-
-This module does NOT handle:
-
-- Command-line interfaces
-- Argument parsing
-- User interaction
-- Execution workflows
-
-These responsibilities are implemented in:
-`gait_analysis.cli`
-
-
-## Execution
-
-This module is not intended to be executed directly.
-
-All functionality is exposed through the CLI layer:
-`extract-data`, `analyze-gait`
-
-## Design Principles
-
-- Separation of concerns between core logic and interface
-- Configuration-driven execution
-- Reusability and modularity
-- Suitability for batch processing workflows
+## Design principles
+- Stateless: no memory between trials
+- Reproducible: same HDF5 + config.yaml → identical output
+- Orientation-agnostic: L2 norm for turn detection, variance for axis calibration
