@@ -164,7 +164,8 @@ def compute_bilateral_metrics(
 
     Returns
     -------
-    dict with bilateral metrics, all prefixed with 'bilateral_'.
+    dict
+        Bilateral metrics, all prefixed with ``bilateral_``.
     """
     result: Dict[str, Any] = {
         "bilateral_stride_time_asymmetry_pct": 0.0,

@@ -8,6 +8,8 @@ project = "MS-Feat"
 author = "Teresa Estevan Autrán"
 release = "0.2.0"
 
+html_theme = "sphinx_rtd_theme"
+
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",

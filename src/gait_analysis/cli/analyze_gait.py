@@ -209,6 +209,7 @@ def save_fatigue_plot(
     Generate and save a per-minute fatigue analysis plot.
 
     Two stacked panels share the X axis (block index):
+
     - Top: stride time per block, with std as a shaded band, plus a linear
       regression line that visualizes the trial-wide fatigue trend.
     - Bottom: stride cadence per block, also with a linear regression line.
