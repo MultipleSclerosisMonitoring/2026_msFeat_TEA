@@ -1018,8 +1018,8 @@ class GaitDataProcessor:
         # consecutive pair of strikes spans one full gait cycle of that foot.
         # The interval between them is therefore the STRIDE TIME of that foot,
         # not the step time (step time would require alternating strikes from
-        # both feet and is calculated by combining Left and Right HDF5 keys,
-        # which is left as future work).
+        # both feet). Bilateral metrics (asymmetry, double support) are computed
+        # separately in compute_bilateral_metrics() after processing both feet.
         if len(peaks) > 1:
             stride_times = df["_time"].iloc[peaks].values
             stride_intervals = np.diff(stride_times) / np.timedelta64(1, "s")
