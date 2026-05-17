@@ -197,6 +197,12 @@ def compute_bilateral_metrics(
     if stance_l > 0 and stance_r > 0:
         result["bilateral_stance_time_asymmetry_pct"] = _asymmetry_pct(stance_l, stance_r)
 
+    # Step time and step time asymmetry are computed later in the try block
+    # once absolute timestamps are available (requires both feet aligned).
+    result["bilateral_step_time_LR_mean_s"] = np.nan  # HS_left  → HS_right
+    result["bilateral_step_time_RL_mean_s"] = np.nan  # HS_right → HS_left
+    result["bilateral_step_time_asymmetry_pct"] = np.nan
+
     # ── Double support time ──────────────────────────────────────────
     # Double support occurs when HS of one foot falls before the TO of
     # the contralateral foot. We need a shared time axis, so we use
@@ -228,6 +234,30 @@ def compute_bilateral_metrics(
         to_l = to_sec(df_left, toe_offs_left)
         hs_r = to_sec(df_right, peaks_right)
         to_r = to_sec(df_right, toe_offs_right)
+
+        # ── Step time ────────────────────────────────────────────────────
+        # Step time LR: interval from each HS_left to the next HS_right.
+        # Step time RL: interval from each HS_right to the next HS_left.
+        # Both are computed by finding, for each HS of one foot, the
+        # nearest subsequent HS of the contralateral foot.
+        step_times_lr = []
+        for hs in hs_l:
+            subsequent = hs_r[hs_r > hs]
+            if len(subsequent) > 0:
+                step_times_lr.append(float(subsequent[0] - hs))
+
+        step_times_rl = []
+        for hs in hs_r:
+            subsequent = hs_l[hs_l > hs]
+            if len(subsequent) > 0:
+                step_times_rl.append(float(subsequent[0] - hs))
+
+        if step_times_lr and step_times_rl:
+            st_lr = float(np.mean(step_times_lr))
+            st_rl = float(np.mean(step_times_rl))
+            result["bilateral_step_time_LR_mean_s"] = st_lr
+            result["bilateral_step_time_RL_mean_s"] = st_rl
+            result["bilateral_step_time_asymmetry_pct"] = _asymmetry_pct(st_lr, st_rl)
 
         # For each left stance [hs_l[i], to_l[i]], find overlap with
         # right stance phases [hs_r[j], to_r[j]].

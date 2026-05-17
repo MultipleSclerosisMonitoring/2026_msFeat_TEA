@@ -440,6 +440,7 @@ def main() -> None:
                     logger.info(
                         f"Bilateral metrics: "
                         f"stride_asymmetry={bil['bilateral_stride_time_asymmetry_pct']:.1f}%, "
+                        f"step_asymmetry={bil['bilateral_step_time_asymmetry_pct']:.1f}%, "
                         f"double_support={bil['bilateral_double_support_mean_s']*1000:.1f} ms "
                         f"({bil['bilateral_double_support_pct']:.1f}% of stride)"
                     )
