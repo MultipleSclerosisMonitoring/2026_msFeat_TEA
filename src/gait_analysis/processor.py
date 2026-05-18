@@ -943,17 +943,101 @@ class GaitDataProcessor:
                 + df["Gy_filt"] ** 2
                 + df["Gz_filt"] ** 2
             )
+            
             df["gyro_magnitude"] = gyro_magnitude
 
-            # Turn detection using a fixed threshold on the filtered gyro
-            # magnitude. An adaptive envelope approach (0.5 Hz low-pass on
-            # raw gyro magnitude) was evaluated but found unsuitable for
-            # this sensor: normal gait already produces gyro magnitudes of
-            # ~170 deg/s mean, making the envelope indistinguishable from
-            # turn events. The fixed threshold on the 5 Hz filtered signal
-            # remains the most reliable approach for this hardware.
-            # The threshold is configurable in config.yaml.
-            df["is_turning"] = gyro_magnitude > self.config.gyro_threshold
+            # ── Turn detection: peak-MAD adaptive method ─────────────────
+            # The swing phase of each step produces a gyro spike of ~500
+            # deg/s, making the raw signal unsuitable for z-score detection.
+            # A 0.5 Hz envelope approach was also evaluated but failed
+            # because normal gait already produces ~170 deg/s mean, making
+            # turns indistinguishable from gait in the low-frequency domain.
+            #
+            # Solution (two-pass approach):
+            # Pass 1 — bootstrap with fixed threshold to get initial peaks.
+            # Pass 2 — compute the per-stride gyro peak series, apply a
+            #           sliding window of median + N * MAD (Median Absolute
+            #           Deviation). MAD is robust to outliers (turns inside
+            #           the window do not corrupt the baseline estimate).
+            #           Strides whose peak exceeds the adaptive threshold
+            #           are flagged as turns and their samples marked.
+            # Pass 3 — re-run gait event detection with the refined mask.
+            #
+            # This method is patient-adaptive: the threshold scales with
+            # each patient's own gait dynamics, making it robust to the
+            # high inter-subject variability typical of MS.
+
+            gyro_mag_np = gyro_magnitude.to_numpy() if hasattr(gyro_magnitude, "to_numpy") else gyro_magnitude
+
+            # Pass 1: fixed-threshold bootstrap
+            is_turning_bootstrap = gyro_mag_np > self.config.gyro_threshold
+            df["is_turning"] = is_turning_bootstrap
+
+            try:
+                # Get bootstrap S2 signal for preliminary peak detection
+                s2_filt_bootstrap = df["S2_filt"].to_numpy()
+                peaks_bootstrap, _, _ = self._detect_gait_events(
+                    s2_filt_bootstrap,
+                    is_turning_bootstrap,
+                )
+
+                if len(peaks_bootstrap) >= 4:
+                    # Pass 2: compute gyro peak per stride
+                    stride_peaks_gyro = []
+                    stride_peak_indices = []  # index of each stride in peaks array
+                    for i in range(len(peaks_bootstrap) - 1):
+                        start = peaks_bootstrap[i]
+                        end   = peaks_bootstrap[i + 1]
+                        stride_gyro = gyro_mag_np[start:end]
+                        if len(stride_gyro) > 0:
+                            stride_peaks_gyro.append(float(np.max(stride_gyro)))
+                            stride_peak_indices.append((start, end))
+
+                    stride_peaks_gyro = np.array(stride_peaks_gyro)
+                    n_strides = len(stride_peaks_gyro)
+
+                    # Sliding window (default: 10 strides ≈ 10 s at 60 spm)
+                    window = max(5, min(10, n_strides // 3))
+                    is_turn_stride = np.zeros(n_strides, dtype=bool)
+
+                    for i in range(n_strides):
+                        lo = max(0, i - window // 2)
+                        hi = min(n_strides, i + window // 2 + 1)
+                        local_peaks = stride_peaks_gyro[lo:hi]
+                        local_median = float(np.median(local_peaks))
+                        local_mad    = float(np.median(np.abs(local_peaks - local_median)))
+                        # N=3: conservative threshold; increase to reduce
+                        # sensitivity for patients with very variable gait
+                        adaptive_threshold = local_median + 3.0 * local_mad
+                        if stride_peaks_gyro[i] > adaptive_threshold:
+                            is_turn_stride[i] = True
+
+                    # Expand stride-level flags to sample-level
+                    is_turning_adaptive = np.zeros(len(df), dtype=bool)
+                    for i, (start, end) in enumerate(stride_peak_indices):
+                        if is_turn_stride[i]:
+                            is_turning_adaptive[start:end] = True
+
+                    # Fallback: if adaptive detects nothing but fixed would,
+                    # keep fixed threshold result
+                    if not np.any(is_turning_adaptive) and np.any(is_turning_bootstrap):
+                        df["is_turning"] = is_turning_bootstrap
+                        self.logger.debug("Peak-MAD turn detection found no turns; keeping fixed threshold.")
+                    else:
+                        df["is_turning"] = is_turning_adaptive
+                        n_turns = int(is_turn_stride.sum())
+                        self.logger.info(
+                            f"Peak-MAD turn detection: {n_turns} turning strides detected "
+                            f"({is_turning_adaptive.mean()*100:.1f}% of samples)."
+                        )
+                else:
+                    # Not enough strides for adaptive detection
+                    self.logger.debug("Not enough strides for peak-MAD detection; using fixed threshold.")
+                    df["is_turning"] = is_turning_bootstrap
+
+            except Exception as e:
+                self.logger.warning(f"Peak-MAD turn detection failed ({e}); falling back to fixed threshold.")
+                df["is_turning"] = is_turning_bootstrap
 
         else:
             df["is_turning"] = False
