@@ -242,21 +242,34 @@ def compute_bilateral_metrics(
         to_r = to_sec(df_right, toe_offs_right)
 
         # ── Step time ────────────────────────────────────────────────────
-        # Step time LR: interval from each HS_left to the next HS_right.
-        # Step time RL: interval from each HS_right to the next HS_left.
-        # Both are computed by finding, for each HS of one foot, the
-        # nearest subsequent HS of the contralateral foot.
-        step_times_lr = []
-        for hs in hs_l:
-            subsequent = hs_r[hs_r > hs]
-            if len(subsequent) > 0:
-                step_times_lr.append(float(subsequent[0] - hs))
-
-        step_times_rl = []
-        for hs in hs_r:
-            subsequent = hs_l[hs_l > hs]
-            if len(subsequent) > 0:
-                step_times_rl.append(float(subsequent[0] - hs))
+        # Step time is defined as the interval between consecutive HS of
+        # alternating feet. Following Plotnik et al. (2020), we merge all
+        # HS events from both feet into a single chronological sequence,
+        # then compute the interval between each pair of consecutive
+        # events from different feet.
+        #
+        # step_LR: HS_right(n) → HS_left(n)  — the step taken by left foot
+        # step_RL: HS_left(n)  → HS_right(n+1) — the step taken by right foot
+        #
+        # This approach is robust to which foot leads, unlike the
+        # "find next contralateral" method which produces artifacts
+        # when one foot consistently precedes the other.
+        all_hs = sorted(
+            [(t, 'L') for t in hs_l] + [(t, 'R') for t in hs_r],
+            key=lambda x: x[0]
+        )
+        step_times_lr = []  # R→L steps
+        step_times_rl = []  # L→R steps
+        for i in range(len(all_hs) - 1):
+            t1, foot1 = all_hs[i]
+            t2, foot2 = all_hs[i + 1]
+            if foot1 != foot2:  # consecutive alternating feet
+                dt = float(t2 - t1)
+                if 0.2 < dt < 2.0:  # plausibility: min 200ms per step
+                    if foot1 == 'R' and foot2 == 'L':
+                        step_times_lr.append(dt)
+                    elif foot1 == 'L' and foot2 == 'R':
+                        step_times_rl.append(dt)
 
         if step_times_lr and step_times_rl:
             st_lr = float(np.mean(step_times_lr))
