@@ -15,6 +15,7 @@ processing:
   gyro_threshold: 150.0
   min_peak_distance_s: 0.6
   min_peak_height: 0.4
+  step_time_enabled: true   # set to false for patients with very prolonged double support (>50% stride)
   minute_block_duration_s: 60.0
   edge_threshold: 0.5
   toe_off_threshold: 0.5

@@ -145,6 +145,7 @@ def compute_bilateral_metrics(
     toe_offs_right: np.ndarray,
     df_left: pd.DataFrame,
     df_right: pd.DataFrame,
+    compute_step_time: bool = True,
 ) -> Dict[str, Any]:
     """
     Compute bilateral gait metrics from paired left and right foot data.
@@ -254,6 +255,8 @@ def compute_bilateral_metrics(
         # This approach is robust to which foot leads, unlike the
         # "find next contralateral" method which produces artifacts
         # when one foot consistently precedes the other.
+        # Step time: merge all HS from both feet chronologically and
+        # compute intervals between consecutive alternating-foot events.
         all_hs = sorted(
             [(t, 'L') for t in hs_l] + [(t, 'R') for t in hs_r],
             key=lambda x: x[0]
@@ -263,14 +266,13 @@ def compute_bilateral_metrics(
         for i in range(len(all_hs) - 1):
             t1, foot1 = all_hs[i]
             t2, foot2 = all_hs[i + 1]
-            if foot1 != foot2:  # consecutive alternating feet
+            if foot1 != foot2:
                 dt = float(t2 - t1)
-                if 0.2 < dt < 2.0:  # plausibility: min 200ms per step
+                if 0.2 < dt < 2.0:
                     if foot1 == 'R' and foot2 == 'L':
                         step_times_lr.append(dt)
                     elif foot1 == 'L' and foot2 == 'R':
                         step_times_rl.append(dt)
-
         if step_times_lr and step_times_rl:
             st_lr = float(np.mean(step_times_lr))
             st_rl = float(np.mean(step_times_rl))
@@ -342,6 +344,7 @@ class ProcessConfig(BaseModel):
     gyro_threshold: float = Field(default=150.0)
     min_peak_distance_s: float = Field(default=0.6, ge=0.05)
     min_peak_height: float = Field(default=0.4)
+    step_time_enabled: bool = Field(default=True)
     minute_block_duration_s: float = Field(default=60.0, ge=5.0)
     edge_threshold: float = Field(default=0.5, ge=0.05, le=0.95)
     toe_off_threshold: float = Field(default=0.5, ge=0.05, le=0.95)
