@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>API Reference &#8212; MS-Feat 0.2.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+    <script src="_static/documentation_options.js?v=938c9ccc"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Command-Line Interface" href="cli.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="api-reference">
+<h1>API Reference<a class="headerlink" href="#api-reference" title="Link to this heading">¶</a></h1>
+<section id="module-gait_analysis.extractor">
+<span id="extractor"></span><h2>Extractor<a class="headerlink" href="#module-gait_analysis.extractor" title="Link to this heading">¶</a></h2>
+<p>Módulo de Extracción y Persistencia de Datos Biomecánicos (InfluxDB -&gt; HDF5).</p>
+<p>Este módulo implementa un motor de extracción masiva que garantiza la integridad
+de las series temporales, gestiona la internacionalización de logs y centraliza
+el almacenamiento en contenedores jerárquicos de alto rendimiento.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="gait_analysis.extractor.InfluxConfig">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">gait_analysis.extractor.</span></span><span class="sig-name descname"><span class="pre">InfluxConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">url</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">token</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">org</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bucket</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/extractor.html#InfluxConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.extractor.InfluxConfig" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">BaseModel</span></code></p>
+<p>Esquema de validación para parámetros de conexión a InfluxDB v2.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>url</strong> (<em>str</em>)</p></li>
+<li><p><strong>token</strong> (<em>str</em>)</p></li>
+<li><p><strong>org</strong> (<em>str</em>)</p></li>
+<li><p><strong>bucket</strong> (<em>str</em>)</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.extractor.InfluxConfig.url">
+<span class="sig-name descname"><span class="pre">url</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#gait_analysis.extractor.InfluxConfig.url" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.extractor.InfluxConfig.token">
+<span class="sig-name descname"><span class="pre">token</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#gait_analysis.extractor.InfluxConfig.token" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.extractor.InfluxConfig.org">
+<span class="sig-name descname"><span class="pre">org</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#gait_analysis.extractor.InfluxConfig.org" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.extractor.InfluxConfig.bucket">
+<span class="sig-name descname"><span class="pre">bucket</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#gait_analysis.extractor.InfluxConfig.bucket" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.extractor.InfluxConfig.model_config">
+<span class="sig-name descname"><span class="pre">model_config</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{}</span></span><a class="headerlink" href="#gait_analysis.extractor.InfluxConfig.model_config" title="Link to this definition">¶</a></dt>
+<dd><p>Configuration for the model, should be a dictionary conforming to [<cite>ConfigDict</cite>][pydantic.config.ConfigDict].</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="gait_analysis.extractor.GaitDataExtractor">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">gait_analysis.extractor.</span></span><span class="sig-name descname"><span class="pre">GaitDataExtractor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">influx_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_h5</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'data/raw/gait_study_data.h5'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lang</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'es'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/extractor.html#GaitDataExtractor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.extractor.GaitDataExtractor" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Motor de extracción masiva con validación de esquema y gestión de persistencia.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>influx_config</strong> (<em>dict</em>)</p></li>
+<li><p><strong>output_h5</strong> (<em>str</em><em> | </em><em>Path</em>)</p></li>
+<li><p><strong>lang</strong> (<em>str</em>)</p></li>
+<li><p><strong>verbose</strong> (<em>int</em>)</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="gait_analysis.extractor.GaitDataExtractor.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">influx_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_h5</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'data/raw/gait_study_data.h5'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lang</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'es'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/extractor.html#GaitDataExtractor.__init__"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.extractor.GaitDataExtractor.__init__" title="Link to this definition">¶</a></dt>
+<dd><p>Inicializa el cliente de InfluxDB y valida el entorno de salida.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>influx_config</strong> (<em>dict</em>)</p></li>
+<li><p><strong>output_h5</strong> (<em>str</em><em> | </em><em>Path</em>)</p></li>
+<li><p><strong>lang</strong> (<em>str</em>)</p></li>
+<li><p><strong>verbose</strong> (<em>int</em>)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="gait_analysis.extractor.GaitDataExtractor.build_trial_label_from_start">
+<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">build_trial_label_from_start</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">start_dt</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/extractor.html#GaitDataExtractor.build_trial_label_from_start"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.extractor.GaitDataExtractor.build_trial_label_from_start" title="Link to this definition">¶</a></dt>
+<dd><p>Build a stable, self-contained trial label from the test start time.</p>
+<p>The timestamp is normalized to UTC so that the HDF5 key does not depend
+on the original local timezone representation of the CSV.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>start_dt</strong> (<em>Timestamp</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="gait_analysis.extractor.GaitDataExtractor.build_h5_key">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">build_h5_key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">codeid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">foot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">leading_slash</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/extractor.html#GaitDataExtractor.build_h5_key"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.extractor.GaitDataExtractor.build_h5_key" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>codeid</strong> (<em>str</em>)</p></li>
+<li><p><strong>test_type</strong> (<em>str</em>)</p></li>
+<li><p><strong>start_dt</strong> (<em>Timestamp</em>)</p></li>
+<li><p><strong>foot</strong> (<em>str</em>)</p></li>
+<li><p><strong>leading_slash</strong> (<em>bool</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="gait_analysis.extractor.GaitDataExtractor.build_expected_h5_keys_from_row">
+<span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">build_expected_h5_keys_from_row</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">row</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/extractor.html#GaitDataExtractor.build_expected_h5_keys_from_row"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.extractor.GaitDataExtractor.build_expected_h5_keys_from_row" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>row</strong> (<em>Series</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>dict[str, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="gait_analysis.extractor.GaitDataExtractor.list_hdf5_keys">
+<span class="sig-name descname"><span class="pre">list_hdf5_keys</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/extractor.html#GaitDataExtractor.list_hdf5_keys"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.extractor.GaitDataExtractor.list_hdf5_keys" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list[str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="gait_analysis.extractor.GaitDataExtractor.audit_registry_rows">
+<span class="sig-name descname"><span class="pre">audit_registry_rows</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rows</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/extractor.html#GaitDataExtractor.audit_registry_rows"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.extractor.GaitDataExtractor.audit_registry_rows" title="Link to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>rows</strong> (<em>DataFrame</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>list[dict[str, <em>Any</em>]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="gait_analysis.extractor.GaitDataExtractor.run_batch_extraction">
+<span class="sig-name descname"><span class="pre">run_batch_extraction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">csv_filepath</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'tests.csv'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'6MWT'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">codeids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_test_filter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">missing_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/extractor.html#GaitDataExtractor.run_batch_extraction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.extractor.GaitDataExtractor.run_batch_extraction" title="Link to this definition">¶</a></dt>
+<dd><p>Ejecuta el pipeline de extracción masiva definido en el registro CSV.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>csv_filepath</strong> (<em>str</em><em> | </em><em>Path</em>)</p></li>
+<li><p><strong>test_type</strong> (<em>str</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>ids</strong> (<em>list</em><em>[</em><em>int</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>codeids</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>apply_test_filter</strong> (<em>bool</em>)</p></li>
+<li><p><strong>missing_only</strong> (<em>bool</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="gait_analysis.extractor.GaitDataExtractor.close">
+<span class="sig-name descname"><span class="pre">close</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/extractor.html#GaitDataExtractor.close"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.extractor.GaitDataExtractor.close" title="Link to this definition">¶</a></dt>
+<dd><p>Finaliza la conexión con el servidor InfluxDB.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-gait_analysis.processor">
+<span id="processor"></span><h2>Processor<a class="headerlink" href="#module-gait_analysis.processor" title="Link to this heading">¶</a></h2>
+<p>Digital Signal Processing (DSP) Module for Human Gait Analysis.</p>
+<p>This module implements a deterministic pipeline for extracting
+spatiotemporal gait features from wearable sensor data.</p>
+<p>The design follows a research-oriented approach:
+- Zero-phase filtering (Butterworth)
+- Automatic spatial calibration (gravity-based)
+- Event detection (Heel Strikes)
+- Temporal and variability feature extraction
+- Temporal trend estimation for fatigue-sensitive metrics</p>
+<p>The output aligns with clinically relevant gait metrics and
+provides a foundation for fatigue analysis.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.processor.haversine_m">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.processor.</span></span><span class="sig-name descname"><span class="pre">haversine_m</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lat1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lng1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lat2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lng2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/processor.html#haversine_m"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.processor.haversine_m" title="Link to this definition">¶</a></dt>
+<dd><p>Great-circle distance in metres between two GPS points.</p>
+<p>Uses the haversine formula on a spherical Earth model with
+R = 6_371_000 m. Accuracy is sufficient for path-length estimation
+over walking distances (sub-metre error for separations under 1 km).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>lat1</strong> (<em>float</em>)</p></li>
+<li><p><strong>lng1</strong> (<em>float</em>)</p></li>
+<li><p><strong>lat2</strong> (<em>float</em>)</p></li>
+<li><p><strong>lng2</strong> (<em>float</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.processor.compute_gps_path_metrics">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.processor.</span></span><span class="sig-name descname"><span class="pre">compute_gps_path_metrics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lat_array</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lng_array</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/processor.html#compute_gps_path_metrics"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.processor.compute_gps_path_metrics" title="Link to this definition">¶</a></dt>
+<dd><p>Compute path-based GPS metrics from latitude / longitude arrays.</p>
+<section id="parameters">
+<h3>Parameters<a class="headerlink" href="#parameters" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>lat_array, lng_array<span class="classifier">np.ndarray</span></dt><dd><p>Latitude and longitude in decimal degrees, with NaNs already
+removed and arrays of equal length.</p>
+</dd>
+</dl>
+</section>
+<section id="returns">
+<h3>Returns<a class="headerlink" href="#returns" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>dict with:</dt><dd><ul class="simple">
+<li><p>n_unique_points : int. Number of distinct GPS coordinates
+(lat/lng rounded to 6 decimal places, ~0.1 m precision).</p></li>
+<li><p>span_m : float. Maximum great-circle distance from the first
+fix to any other fix. For a back-and-forth walking course
+this is roughly half of the actual path length.</p></li>
+<li><p>total_path_m : float. Sum of consecutive haversine
+distances. Approximates total distance walked, but is
+biased upward by GPS noise (each random jitter adds path
+length). For static recordings it should ideally be 0.</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>lat_array</strong> (<em>ndarray</em>)</p></li>
+<li><p><strong>lng_array</strong> (<em>ndarray</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Dict</em>[str, float]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.processor.compute_mean_swing_gyro_integral">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.processor.</span></span><span class="sig-name descname"><span class="pre">compute_mean_swing_gyro_integral</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">peaks</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">toe_offs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/processor.html#compute_mean_swing_gyro_integral"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.processor.compute_mean_swing_gyro_integral" title="Link to this definition">¶</a></dt>
+<dd><p>Mean integral of gyroscope L2 norm during swing phases (deg).
+Used by gyro-norm spatial model: stride_length = K * result.
+Returns 0.0 if no valid swings.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>DataFrame</em>)</p></li>
+<li><p><strong>peaks</strong> (<em>ndarray</em>)</p></li>
+<li><p><strong>toe_offs</strong> (<em>ndarray</em>)</p></li>
+<li><p><strong>fs</strong> (<em>float</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.processor.compute_bilateral_metrics">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.processor.</span></span><span class="sig-name descname"><span class="pre">compute_bilateral_metrics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">metrics_left</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metrics_right</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">peaks_left</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">peaks_right</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">toe_offs_left</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">toe_offs_right</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">df_left</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">df_right</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/processor.html#compute_bilateral_metrics"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.processor.compute_bilateral_metrics" title="Link to this definition">¶</a></dt>
+<dd><p>Compute bilateral gait metrics from paired left and right foot data.</p>
+<p>Calculates stride asymmetry and double support time, which require
+simultaneous knowledge of events from both feet. Asymmetry is
+expressed as the absolute percentage difference between feet,
+following the convention of Plotnik et al. (2020). Double support
+time is the interval during which both feet are simultaneously in
+contact with the ground, computed as the overlap between the stance
+phase of one foot and the stance phase of the contralateral foot.</p>
+<section id="id1">
+<h3>Parameters<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>metrics_left, metrics_right<span class="classifier">dict</span></dt><dd><p>Trial-wide metrics already computed by process_signals for each foot.</p>
+</dd>
+<dt>peaks_left, peaks_right<span class="classifier">np.ndarray</span></dt><dd><p>Heel-strike indices for each foot.</p>
+</dd>
+<dt>toe_offs_left, toe_offs_right<span class="classifier">np.ndarray</span></dt><dd><p>Toe-off indices for each foot.</p>
+</dd>
+<dt>df_left, df_right<span class="classifier">pd.DataFrame</span></dt><dd><p>Processed dataframes with ‘_time’ column for each foot.</p>
+</dd>
+</dl>
+</section>
+<section id="id2">
+<h3>Returns<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>dict</dt><dd><p>Bilateral metrics, all prefixed with <code class="docutils literal notranslate"><span class="pre">bilateral_</span></code>.</p>
+</dd>
+</dl>
+</section>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>metrics_left</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
+<li><p><strong>metrics_right</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
+<li><p><strong>peaks_left</strong> (<em>ndarray</em>)</p></li>
+<li><p><strong>peaks_right</strong> (<em>ndarray</em>)</p></li>
+<li><p><strong>toe_offs_left</strong> (<em>ndarray</em>)</p></li>
+<li><p><strong>toe_offs_right</strong> (<em>ndarray</em>)</p></li>
+<li><p><strong>df_left</strong> (<em>DataFrame</em>)</p></li>
+<li><p><strong>df_right</strong> (<em>DataFrame</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Dict</em>[str, <em>Any</em>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="gait_analysis.processor.ProcessConfig">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">gait_analysis.processor.</span></span><span class="sig-name descname"><span class="pre">ProcessConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">fs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cutoff_pressure</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">20.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cutoff_gyro</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gyro_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">150.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_peak_distance_s</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_peak_height</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.4</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">minute_block_duration_s</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">60.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">edge_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">toe_off_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">toe_off_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'derivative'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/processor.html#ProcessConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.processor.ProcessConfig" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">BaseModel</span></code></p>
+<p>Configuration schema for gait signal processing parameters.</p>
+<section id="attributes">
+<h3>Attributes<a class="headerlink" href="#attributes" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>fs<span class="classifier">float</span></dt><dd><p>Sampling frequency in Hz.</p>
+</dd>
+<dt>cutoff_pressure<span class="classifier">float</span></dt><dd><p>Low-pass cutoff frequency for plantar pressure signal.</p>
+</dd>
+<dt>cutoff_gyro<span class="classifier">float</span></dt><dd><p>Low-pass cutoff frequency for gyroscope signal.</p>
+</dd>
+<dt>gyro_threshold<span class="classifier">float</span></dt><dd><p>Threshold to detect turning phases.</p>
+</dd>
+<dt>min_peak_distance_s<span class="classifier">float</span></dt><dd><p>Minimum distance between detected peaks (seconds).</p>
+</dd>
+<dt>min_peak_height<span class="classifier">float</span></dt><dd><p>Minimum normalized amplitude for peak detection.</p>
+</dd>
+<dt>minute_block_duration_s<span class="classifier">float</span></dt><dd><p>Duration of each block in the per-minute fatigue analysis (seconds).
+Default is 60 s, matching the standard segmentation used in 6MWT
+fatigue studies. Set higher for shorter trials, lower for finer-grained
+temporal resolution.</p>
+</dd>
+<dt>edge_threshold<span class="classifier">float</span></dt><dd><p>Normalized amplitude threshold (0-1) used to identify Heel Strike
+and Toe-Off as rising/falling edge crossings of the S2 signal.
+Default is 0.5 (= 50 % of the trial’s dynamic range).</p>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.processor.ProcessConfig.model_config">
+<span class="sig-name descname"><span class="pre">model_config</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'extra':</span> <span class="pre">'forbid'}</span></span><a class="headerlink" href="#gait_analysis.processor.ProcessConfig.model_config" title="Link to this definition">¶</a></dt>
+<dd><p>Configuration for the model, should be a dictionary conforming to [<cite>ConfigDict</cite>][pydantic.config.ConfigDict].</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.processor.ProcessConfig.fs">
+<span class="sig-name descname"><span class="pre">fs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#gait_analysis.processor.ProcessConfig.fs" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.processor.ProcessConfig.cutoff_pressure">
+<span class="sig-name descname"><span class="pre">cutoff_pressure</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#gait_analysis.processor.ProcessConfig.cutoff_pressure" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.processor.ProcessConfig.cutoff_gyro">
+<span class="sig-name descname"><span class="pre">cutoff_gyro</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#gait_analysis.processor.ProcessConfig.cutoff_gyro" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.processor.ProcessConfig.gyro_threshold">
+<span class="sig-name descname"><span class="pre">gyro_threshold</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#gait_analysis.processor.ProcessConfig.gyro_threshold" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.processor.ProcessConfig.min_peak_distance_s">
+<span class="sig-name descname"><span class="pre">min_peak_distance_s</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#gait_analysis.processor.ProcessConfig.min_peak_distance_s" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.processor.ProcessConfig.min_peak_height">
+<span class="sig-name descname"><span class="pre">min_peak_height</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#gait_analysis.processor.ProcessConfig.min_peak_height" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.processor.ProcessConfig.minute_block_duration_s">
+<span class="sig-name descname"><span class="pre">minute_block_duration_s</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#gait_analysis.processor.ProcessConfig.minute_block_duration_s" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.processor.ProcessConfig.edge_threshold">
+<span class="sig-name descname"><span class="pre">edge_threshold</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#gait_analysis.processor.ProcessConfig.edge_threshold" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.processor.ProcessConfig.toe_off_threshold">
+<span class="sig-name descname"><span class="pre">toe_off_threshold</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#gait_analysis.processor.ProcessConfig.toe_off_threshold" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gait_analysis.processor.ProcessConfig.toe_off_method">
+<span class="sig-name descname"><span class="pre">toe_off_method</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#gait_analysis.processor.ProcessConfig.toe_off_method" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</section>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fs</strong> (<em>Annotated</em><em>[</em><em>float</em><em>, </em><em>Ge</em><em>(</em><em>ge=0.1</em><em>)</em><em>]</em>)</p></li>
+<li><p><strong>cutoff_pressure</strong> (<em>Annotated</em><em>[</em><em>float</em><em>, </em><em>Ge</em><em>(</em><em>ge=0.1</em><em>)</em><em>]</em>)</p></li>
+<li><p><strong>cutoff_gyro</strong> (<em>Annotated</em><em>[</em><em>float</em><em>, </em><em>Ge</em><em>(</em><em>ge=0.1</em><em>)</em><em>]</em>)</p></li>
+<li><p><strong>gyro_threshold</strong> (<em>float</em>)</p></li>
+<li><p><strong>min_peak_distance_s</strong> (<em>Annotated</em><em>[</em><em>float</em><em>, </em><em>Ge</em><em>(</em><em>ge=0.05</em><em>)</em><em>]</em>)</p></li>
+<li><p><strong>min_peak_height</strong> (<em>float</em>)</p></li>
+<li><p><strong>minute_block_duration_s</strong> (<em>Annotated</em><em>[</em><em>float</em><em>, </em><em>Ge</em><em>(</em><em>ge=5.0</em><em>)</em><em>]</em>)</p></li>
+<li><p><strong>edge_threshold</strong> (<em>Annotated</em><em>[</em><em>float</em><em>, </em><em>Ge</em><em>(</em><em>ge=0.05</em><em>)</em><em>, </em><em>Le</em><em>(</em><em>le=0.95</em><em>)</em><em>]</em>)</p></li>
+<li><p><strong>toe_off_threshold</strong> (<em>Annotated</em><em>[</em><em>float</em><em>, </em><em>Ge</em><em>(</em><em>ge=0.05</em><em>)</em><em>, </em><em>Le</em><em>(</em><em>le=0.95</em><em>)</em><em>]</em>)</p></li>
+<li><p><strong>toe_off_method</strong> (<em>str</em>)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="gait_analysis.processor.GaitDataProcessor">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">gait_analysis.processor.</span></span><span class="sig-name descname"><span class="pre">GaitDataProcessor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/processor.html#GaitDataProcessor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.processor.GaitDataProcessor" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Core processing engine for gait signal analysis.</p>
+<p>This class transforms raw sensor data into clinically relevant
+spatiotemporal features and variability metrics.</p>
+<section id="pipeline-stages">
+<h3>Pipeline stages<a class="headerlink" href="#pipeline-stages" title="Link to this heading">¶</a></h3>
+<ol class="arabic simple">
+<li><p>Temporal alignment</p></li>
+<li><p>Signal filtering</p></li>
+<li><p>Turn segmentation</p></li>
+<li><p>Event detection (Heel Strikes)</p></li>
+<li><p>Temporal, variability, and trend feature extraction</p></li>
+</ol>
+</section>
+<section id="id3">
+<h3>Parameters<a class="headerlink" href="#id3" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>config<span class="classifier">ProcessConfig, optional</span></dt><dd><p>Processing configuration. If omitted, default values are used.</p>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="gait_analysis.processor.GaitDataProcessor.process_signals">
+<span class="sig-name descname"><span class="pre">process_signals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clinical_tests_cfg</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gps_estimation_cfg</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spatial_models_cfg</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/processor.html#GaitDataProcessor.process_signals"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.processor.GaitDataProcessor.process_signals" title="Link to this definition">¶</a></dt>
+<dd><p>Execute the full gait processing pipeline.</p>
+<p>The method performs:
+- chronological sorting
+- zero-phase filtering
+- turn masking
+- heel strike detection
+- extraction of temporal, variability, and trend metrics</p>
+<section id="id4">
+<h4>Parameters<a class="headerlink" href="#id4" title="Link to this heading">¶</a></h4>
+<dl class="simple">
+<dt>df<span class="classifier">pd.DataFrame</span></dt><dd><p>Raw gait dataframe. Must contain at least ‘_time’ and ‘S0’.</p>
+</dd>
+</dl>
+</section>
+<section id="id5">
+<h4>Returns<a class="headerlink" href="#id5" title="Link to this heading">¶</a></h4>
+<dl class="simple">
+<dt>df_proc<span class="classifier">pd.DataFrame</span></dt><dd><p>Processed dataframe with filtered signals and turn mask.</p>
+</dd>
+<dt>metrics<span class="classifier">Dict[str, Any]</span></dt><dd><p>Extracted gait metrics and metadata.</p>
+</dd>
+<dt>peaks<span class="classifier">np.ndarray</span></dt><dd><p>Detected heel strike indices.</p>
+</dd>
+</dl>
+</section>
+<section id="raises">
+<h4>Raises<a class="headerlink" href="#raises" title="Link to this heading">¶</a></h4>
+<dl class="simple">
+<dt>ValueError</dt><dd><p>If required columns are missing.</p>
+</dd>
+</dl>
+</section>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>DataFrame</em>)</p></li>
+<li><p><strong>test_type</strong> (<em>str</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>clinical_tests_cfg</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>gps_estimation_cfg</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>spatial_models_cfg</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Tuple</em>[<em>DataFrame</em>, <em>Dict</em>[str, <em>Any</em>], <em>ndarray</em>, <em>ndarray</em>, <em>DataFrame</em>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>config</strong> (<a class="reference internal" href="#gait_analysis.processor.ProcessConfig" title="gait_analysis.processor.ProcessConfig"><em>ProcessConfig</em></a><em> | </em><em>None</em>)</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-gait_analysis.cli.extract_data">
+<span id="cli-extract-data"></span><h2>CLI: extract_data<a class="headerlink" href="#module-gait_analysis.cli.extract_data" title="Link to this heading">¶</a></h2>
+<p>Command-line interface for batch extraction of gait sensor data.</p>
+<p>This module provides a CLI entry point to extract time-series data
+from InfluxDB and store it locally (e.g., HDF5) for further processing.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.cli.extract_data.build_parser">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.cli.extract_data.</span></span><span class="sig-name descname"><span class="pre">build_parser</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/cli/extract_data.html#build_parser"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.cli.extract_data.build_parser" title="Link to this definition">¶</a></dt>
+<dd><p>Create and configure the argument parser for the extract-data CLI.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Configured parser with CLI arguments.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>argparse.ArgumentParser</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.cli.extract_data.main">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.cli.extract_data.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/cli/extract_data.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.cli.extract_data.main" title="Link to this definition">¶</a></dt>
+<dd><p>Entry point for the extract-data CLI command.</p>
+<p>Parses input arguments, loads project configuration,
+initializes the extractor, and executes batch extraction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="module-gait_analysis.cli.analyze_gait">
+<span id="cli-analyze-gait"></span><h2>CLI: analyze_gait<a class="headerlink" href="#module-gait_analysis.cli.analyze_gait" title="Link to this heading">¶</a></h2>
+<p>Command-line interface for gait signal processing and analysis.</p>
+<p>This module provides a CLI entry point to process previously
+extracted gait data and compute biomechanical metrics.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.cli.analyze_gait.resolve_path">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.cli.analyze_gait.</span></span><span class="sig-name descname"><span class="pre">resolve_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">base_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/cli/analyze_gait.html#resolve_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.cli.analyze_gait.resolve_path" title="Link to this definition">¶</a></dt>
+<dd><p>Resolve relative paths against the project root.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>base_dir</strong> (<em>Path</em>)</p></li>
+<li><p><strong>value</strong> (<em>str</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Path</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.cli.analyze_gait.build_keyed_output_path">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.cli.analyze_gait.</span></span><span class="sig-name descname"><span class="pre">build_keyed_output_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">base_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">h5_key</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/cli/analyze_gait.html#build_keyed_output_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.cli.analyze_gait.build_keyed_output_path" title="Link to this definition">¶</a></dt>
+<dd><p>Append a sanitized HDF5 key to the configured output filename.</p>
+<p>Example:
+- reports/data/metrics_summary.csv
+- reports/data/metrics_summary_p_RHRHUG004-1_6MWT_start_2025-11-28T12-46-09Z_Right.csv</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>base_path</strong> (<em>Path</em>)</p></li>
+<li><p><strong>h5_key</strong> (<em>str</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Path</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.cli.analyze_gait.get_contralateral_key">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.cli.analyze_gait.</span></span><span class="sig-name descname"><span class="pre">get_contralateral_key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">h5_key</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/cli/analyze_gait.html#get_contralateral_key"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.cli.analyze_gait.get_contralateral_key" title="Link to this definition">¶</a></dt>
+<dd><p>Return the HDF5 key for the contralateral foot of the same trial.</p>
+<p>Swaps the foot segment (last path component) between ‘Left’ and
+‘Right’. Returns None if the key does not end in a recognised foot
+label.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>h5_key</strong> (<em>str</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>str | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.cli.analyze_gait.parse_test_type_from_h5_key">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.cli.analyze_gait.</span></span><span class="sig-name descname"><span class="pre">parse_test_type_from_h5_key</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">h5_key</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/cli/analyze_gait.html#parse_test_type_from_h5_key"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.cli.analyze_gait.parse_test_type_from_h5_key" title="Link to this definition">¶</a></dt>
+<dd><p>Extract the clinical test type from a structured HDF5 key.</p>
+<dl class="simple">
+<dt>HDF5 keys have the format:</dt><dd><p>p_&lt;codeid&gt;/&lt;test_type&gt;/start_&lt;iso_timestamp&gt;/&lt;foot&gt;</p>
+</dd>
+</dl>
+<p>For example, <code class="docutils literal notranslate"><span class="pre">p_RHRHUG004-1/TUG/start_2025-11-28T12-43-14Z/Right</span></code>
+yields <code class="docutils literal notranslate"><span class="pre">&quot;TUG&quot;</span></code>.</p>
+<section id="id6">
+<h3>Returns<a class="headerlink" href="#id6" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>str | None</dt><dd><p>The test type string (e.g. “6MWT”, “TUG”, “T25FW”), or <code class="docutils literal notranslate"><span class="pre">None</span></code>
+if the key does not follow the expected structure.</p>
+</dd>
+</dl>
+</section>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>h5_key</strong> (<em>str</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>str | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.cli.analyze_gait.build_parser">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.cli.analyze_gait.</span></span><span class="sig-name descname"><span class="pre">build_parser</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/cli/analyze_gait.html#build_parser"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.cli.analyze_gait.build_parser" title="Link to this definition">¶</a></dt>
+<dd><p>Create and configure the argument parser for the analyze-gait CLI.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Configured parser with CLI arguments.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>argparse.ArgumentParser</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.cli.analyze_gait.validate_config">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.cli.analyze_gait.</span></span><span class="sig-name descname"><span class="pre">validate_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/cli/analyze_gait.html#validate_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.cli.analyze_gait.validate_config" title="Link to this definition">¶</a></dt>
+<dd><p>Validate required config sections and keys.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>config</strong> (<em>dict</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.cli.analyze_gait.save_plot">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.cli.analyze_gait.</span></span><span class="sig-name descname"><span class="pre">save_plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df_proc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">peaks</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">toe_offs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_plot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">h5_key</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/cli/analyze_gait.html#save_plot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.cli.analyze_gait.save_plot" title="Link to this definition">¶</a></dt>
+<dd><p>Generate and save the gait segmentation plot.</p>
+<p>Heel Strikes are marked with red squares, Toe-Offs with blue triangles.
+Turning intervals (gyro magnitude above threshold) are shaded in light
+blue.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df_proc</strong> (<em>DataFrame</em>)</p></li>
+<li><p><strong>output_plot</strong> (<em>Path</em>)</p></li>
+<li><p><strong>h5_key</strong> (<em>str</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.cli.analyze_gait.save_fatigue_plot">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.cli.analyze_gait.</span></span><span class="sig-name descname"><span class="pre">save_fatigue_plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">per_minute_df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_plot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">h5_key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stride_time_slope</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cadence_slope</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/cli/analyze_gait.html#save_fatigue_plot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.cli.analyze_gait.save_fatigue_plot" title="Link to this definition">¶</a></dt>
+<dd><p>Generate and save a per-minute fatigue analysis plot.</p>
+<p>Two stacked panels share the X axis (block index):</p>
+<ul class="simple">
+<li><p>Top: stride time per block, with std as a shaded band, plus a linear
+regression line that visualizes the trial-wide fatigue trend.</p></li>
+<li><p>Bottom: stride cadence per block, also with a linear regression line.</p></li>
+</ul>
+<p>The slope annotations make the fatigue trend immediately readable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>per_minute_df</strong> (<em>DataFrame</em>)</p></li>
+<li><p><strong>output_plot</strong> (<em>Path</em>)</p></li>
+<li><p><strong>h5_key</strong> (<em>str</em>)</p></li>
+<li><p><strong>stride_time_slope</strong> (<em>float</em>)</p></li>
+<li><p><strong>cadence_slope</strong> (<em>float</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gait_analysis.cli.analyze_gait.main">
+<span class="sig-prename descclassname"><span class="pre">gait_analysis.cli.analyze_gait.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/gait_analysis/cli/analyze_gait.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.cli.analyze_gait.main" title="Link to this definition">¶</a></dt>
+<dd><p>Entry point for the analyze-gait CLI command.</p>
+<p>Loads configuration, sets up logging, executes the processing
+pipeline over a selected HDF5 key, and stores output metrics
+and optional plots.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">MS-Feat</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">Project Modules</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">Command-Line Interface</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#module-gait_analysis.extractor">Extractor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-gait_analysis.processor">Processor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-gait_analysis.cli.extract_data">CLI: extract_data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#module-gait_analysis.cli.analyze_gait">CLI: analyze_gait</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="cli.html" title="previous chapter">Command-Line Interface</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/api.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

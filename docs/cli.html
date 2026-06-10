@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Command-Line Interface &#8212; MS-Feat 0.2.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+    <script src="_static/documentation_options.js?v=938c9ccc"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="API Reference" href="api.html" />
+    <link rel="prev" title="Project Modules" href="modules.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="command-line-interface">
+<h1>Command-Line Interface<a class="headerlink" href="#command-line-interface" title="Link to this heading">¶</a></h1>
+<section id="extract-data">
+<h2>extract-data<a class="headerlink" href="#extract-data" title="Link to this heading">¶</a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>extract-data<span class="w"> </span>--config<span class="w"> </span>config/config.yaml
+</pre></div>
+</div>
+<p>Common selective extraction and audit examples:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>extract-data<span class="w"> </span>--config<span class="w"> </span>config/config.yaml<span class="w"> </span>--ids<span class="w"> </span><span class="m">87</span><span class="w"> </span><span class="m">89</span>
+poetry<span class="w"> </span>run<span class="w"> </span>extract-data<span class="w"> </span>--config<span class="w"> </span>config/config.yaml<span class="w"> </span>--codeid<span class="w"> </span>RHRHUG004-1<span class="w"> </span>--test<span class="w"> </span>6MWT
+poetry<span class="w"> </span>run<span class="w"> </span>extract-data<span class="w"> </span>--config<span class="w"> </span>config/config.yaml<span class="w"> </span>--ids<span class="w"> </span><span class="m">87</span><span class="w"> </span><span class="m">89</span><span class="w"> </span>--check-only
+poetry<span class="w"> </span>run<span class="w"> </span>extract-data<span class="w"> </span>--config<span class="w"> </span>config/config.yaml<span class="w"> </span>--test<span class="w"> </span>6MWT<span class="w"> </span>--missing-only
+poetry<span class="w"> </span>run<span class="w"> </span>extract-data<span class="w"> </span>--config<span class="w"> </span>config/config.yaml<span class="w"> </span>--list-hdf5-keys
+</pre></div>
+</div>
+<p>Options added for extraction workflow management:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">--ids</span></code>: extract or audit only the specified CSV row ids</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--codeid</span></code>: extract or audit only the specified patient identifiers</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--missing-only</span></code>: skip rows already complete in HDF5 (both <code class="docutils literal notranslate"><span class="pre">Left</span></code> and <code class="docutils literal notranslate"><span class="pre">Right</span></code>)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--check-only</span></code>: compare the selected CSV rows against the HDF5 and report status</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--list-hdf5-keys</span></code>: print current HDF5 keys and exit</p></li>
+</ul>
+<p>The <code class="docutils literal notranslate"><span class="pre">--check-only</span></code> mode reports whether each selected row is:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">complete</span></code>: both <code class="docutils literal notranslate"><span class="pre">Left</span></code> and <code class="docutils literal notranslate"><span class="pre">Right</span></code> keys exist</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">left_only</span></code>: only the <code class="docutils literal notranslate"><span class="pre">Left</span></code> key exists</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">right_only</span></code>: only the <code class="docutils literal notranslate"><span class="pre">Right</span></code> key exists</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">missing</span></code>: neither foot is present</p></li>
+</ul>
+<p>HDF5 trial keys are now self-contained and derived from the CSV start time in UTC:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>p_RHRHUG004-1/6MWT/start_2025-11-28T12-46-09Z/Right
+</pre></div>
+</div>
+<p>Typical targeted workflow:</p>
+<ol class="arabic simple">
+<li><p>Check whether the selected CSV rows are already present in HDF5:</p></li>
+</ol>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>extract-data<span class="w"> </span>--config<span class="w"> </span>config/config.yaml<span class="w"> </span>--ids<span class="w"> </span><span class="m">87</span><span class="w"> </span><span class="m">89</span><span class="w"> </span>--check-only
+</pre></div>
+</div>
+<ol class="arabic simple" start="2">
+<li><p>Extract only the desired cases:</p></li>
+</ol>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>extract-data<span class="w"> </span>--config<span class="w"> </span>config/config.yaml<span class="w"> </span>--ids<span class="w"> </span><span class="m">87</span><span class="w"> </span><span class="m">89</span>
+</pre></div>
+</div>
+<ol class="arabic simple" start="3">
+<li><p>Inspect the available HDF5 keys if needed:</p></li>
+</ol>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>extract-data<span class="w"> </span>--config<span class="w"> </span>config/config.yaml<span class="w"> </span>--list-hdf5-keys
+</pre></div>
+</div>
+<ol class="arabic simple" start="4">
+<li><p>Analyze a specific extracted foot without editing the config file:</p></li>
+</ol>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>analyze-gait<span class="w"> </span>--config<span class="w"> </span>config/config.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--h5-key<span class="w"> </span>p_RHRHUG004-1/6MWT/start_2025-11-28T12-46-09Z/Right
+</pre></div>
+</div>
+</section>
+<section id="analyze-gait">
+<h2>analyze-gait<a class="headerlink" href="#analyze-gait" title="Link to this heading">¶</a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>analyze-gait<span class="w"> </span>--config<span class="w"> </span>config/config.yaml
+</pre></div>
+</div>
+<p>You can also override the configured HDF5 key directly from the command line:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>analyze-gait<span class="w"> </span>--config<span class="w"> </span>config/config.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--h5-key<span class="w"> </span>p_RHRHUG004-1/6MWT/start_2025-11-28T12-46-09Z/Right
+</pre></div>
+</div>
+<p>This is especially useful when comparing multiple patients, tests or feet
+without editing <code class="docutils literal notranslate"><span class="pre">config/config.yaml</span></code> between runs.</p>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">MS-Feat</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">Project Modules</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Command-Line Interface</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#extract-data">extract-data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#analyze-gait">analyze-gait</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="modules.html" title="previous chapter">Project Modules</a></li>
+      <li>Next: <a href="api.html" title="next chapter">API Reference</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/cli.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
