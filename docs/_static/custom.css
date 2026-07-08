@@ -1,1 +1,84 @@
-/* This file intentionally left blank. */
+body {
+  background: linear-gradient(180deg, #f6efe4 0%, #fffdf8 220px, #fffdf8 100%);
+}
+
+.sidebar-brand-text {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.sidebar-logo {
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0.5rem;
+}
+
+.doc-hero {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) 1fr;
+  gap: 1.5rem;
+  align-items: center;
+  margin: 0 0 2rem 0;
+  padding: 1.5rem;
+  border: 1px solid rgba(11, 79, 108, 0.12);
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(18, 48, 71, 0.06), rgba(214, 180, 107, 0.12));
+  box-shadow: 0 16px 40px rgba(17, 34, 51, 0.08);
+}
+
+.doc-hero__logos {
+  display: grid;
+  gap: 1rem;
+  justify-items: center;
+  align-items: center;
+  padding: 1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.doc-hero__logo {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.doc-hero__logo--upm {
+  max-height: 86px;
+}
+
+.doc-hero__logo--etsii {
+  max-height: 110px;
+}
+
+.doc-hero__eyebrow {
+  margin: 0 0 0.5rem 0;
+  color: #9a6b14;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.doc-hero__lead {
+  margin: 0;
+  font-size: 1.08rem;
+  line-height: 1.75;
+}
+
+.content .toctree-wrapper p.caption {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+img.graphviz {
+  border-radius: 16px;
+  padding: 0.9rem;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(11, 79, 108, 0.1);
+}
+
+@media (max-width: 900px) {
+  .doc-hero {
+    grid-template-columns: 1fr;
+  }
+}

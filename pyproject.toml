@@ -25,6 +25,7 @@ psycopg = {version = "^3.2.1", extras = ["binary"]}
 pytest = "^8.0.0"
 black = "^24.0.0"
 sphinx = "^8.0.0"
+furo = "^2024.8.6"
 
 [tool.poetry.scripts]
 extract-data = "gait_analysis.cli.extract_data:main"
