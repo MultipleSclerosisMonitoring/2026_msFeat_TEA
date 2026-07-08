@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Project Overview &#8212; MS-Feat Documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=6625fa76" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=b0f18b1d" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=eafc0fe6" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=56c4699f" />
+    <script src="_static/documentation_options.js?v=938c9ccc"></script>
+    <script src="_static/doctools.js?v=888ff710"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Architecture" href="architecture.html" />
+    <link rel="prev" title="MS-Feat Documentation" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  <div class="document">
+    
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">MS-Feat</a></h1>
+
+
+
+<p class="blurb">Clinical gait-analysis pipeline documentation</p>
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Project Overview</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#purpose">Purpose</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#core-capabilities">Core Capabilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#design-principles">Design Principles</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#documentation-coverage">Documentation Coverage</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="workflow.html">Pipeline Workflow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="data_model.html">Data Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">Command-Line Interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">Project Modules</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">MS-Feat Documentation</a></li>
+      <li>Next: <a href="architecture.html" title="next chapter">Architecture</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="project-overview">
+<h1>Project Overview<a class="headerlink" href="#project-overview" title="Link to this heading">¶</a></h1>
+<section id="purpose">
+<h2>Purpose<a class="headerlink" href="#purpose" title="Link to this heading">¶</a></h2>
+<p>MS-Feat supports standardized gait-test processing in a reproducible pipeline.
+It is intended for scenarios where:</p>
+<ul class="simple">
+<li><p>test windows are curated externally and stored in healthywear_event;</p></li>
+<li><p>raw signals come from wearable IMU and plantar-pressure devices in InfluxDB;</p></li>
+<li><p>analyses must be repeatable, configurable, and traceable by pipeline version;</p></li>
+<li><p>results must be available per clinical test and per foot.</p></li>
+</ul>
+</section>
+<section id="core-capabilities">
+<h2>Core Capabilities<a class="headerlink" href="#core-capabilities" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Select trials from PostgreSQL by event identifier, patient code, test type, or date window.</p></li>
+<li><p>Extract left/right sensor streams from InfluxDB and store them in HDF5.</p></li>
+<li><p>Compute temporal, fatigue-related, bilateral, and spatial gait indicators.</p></li>
+<li><p>Persist computed outputs to healthywear_test_results using upsert semantics.</p></li>
+<li><p>Keep configuration externalized via config/config.yaml and environment variables.</p></li>
+</ul>
+</section>
+<section id="design-principles">
+<h2>Design Principles<a class="headerlink" href="#design-principles" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Strongly typed runtime configuration through Pydantic models.</p></li>
+<li><p>Deterministic processing with explicit fallback strategies for spatial metrics.</p></li>
+<li><p>Separation between selection, extraction, processing, persistence, and CLI orchestration.</p></li>
+<li><p>Documentation-first engineering with API reference, architecture views, and UML diagrams.</p></li>
+</ul>
+</section>
+<section id="documentation-coverage">
+<h2>Documentation Coverage<a class="headerlink" href="#documentation-coverage" title="Link to this heading">¶</a></h2>
+<p>This documentation includes:</p>
+<ul class="simple">
+<li><p>architectural flow diagrams;</p></li>
+<li><p>sequence and class UML-style diagrams rendered through Graphviz;</p></li>
+<li><p>CLI usage guidance;</p></li>
+<li><p>data-model and persistence notes;</p></li>
+<li><p>autodocumented API pages enriched with type hints and Google-style docstrings.</p></li>
+</ul>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+    <div class="clearer"></div>
+  </div>
+    <div class="footer">
+      &copy;.
+      
+      |
+      <a href="_sources/overview.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

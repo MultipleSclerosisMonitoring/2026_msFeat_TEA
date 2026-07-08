@@ -15,6 +15,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from gait_analysis import __version__ as PIPELINE_VERSION
+from gait_analysis.postgresql import HealthywearPostgresRepository
 from gait_analysis.processor import GaitDataProcessor, ProcessConfig, compute_bilateral_metrics
 from gait_analysis.utils.config_loader import load_project_config
 from gait_analysis.utils.logging_config import setup_logging
@@ -82,12 +84,36 @@ def parse_test_type_from_h5_key(h5_key: str) -> str | None:
         return parts[1]
     return None
 
+def _extract_event_id(df_raw: pd.DataFrame) -> int | None:
+    if "healthywear_event_id" not in df_raw.columns or df_raw.empty:
+        return None
+    series = pd.to_numeric(df_raw["healthywear_event_id"], errors="coerce").dropna()
+    if series.empty:
+        return None
+    return int(series.iloc[0])
+
+
+def _persist_metrics_if_configured(postgresql_cfg: dict, metrics: dict, logger: logging.Logger) -> None:
+    event_id = metrics.get("healthywear_event_id")
+    if event_id in (None, ""):
+        logger.info("No healthywear_event_id available; PostgreSQL result persistence skipped.")
+        return
+
+    repo = HealthywearPostgresRepository(postgresql_cfg)
+    repo.upsert_test_result(metrics)
+    logger.info(
+        "Metrics upserted to PostgreSQL for event_id=%s foot=%s",
+        event_id,
+        metrics.get("foot"),
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
-    """
-    Create and configure the argument parser for the analyze-gait CLI.
+    """Create the argument parser for the ``analyze-gait`` command.
 
     Returns:
-        argparse.ArgumentParser: Configured parser with CLI arguments.
+        A configured parser with runtime options for selecting the HDF5 key,
+        language, verbosity, plotting behavior, and configuration file.
     """
     parser = argparse.ArgumentParser(
         description="Process extracted gait data and compute summary metrics."
@@ -320,6 +346,7 @@ def main() -> None:
         paths_cfg = config.get("paths", {})
         processing_cfg = config.get("processing", {})
         analysis_cfg = config.get("analysis", {})
+        postgresql_cfg = config.get("postgresql", {})
 
         language = args.lang if args.lang is not None else project_cfg.get("language", "es")
         verbose = args.verbose if args.verbose is not None else project_cfg.get("verbose", 1)
@@ -399,6 +426,11 @@ def main() -> None:
         )
         metrics["analysis_h5_key"] = h5_key
         metrics["analysis_timestamp"] = str(pd.Timestamp.now())
+        metrics["healthywear_event_id"] = _extract_event_id(df_raw)
+        metrics["patient_id"] = h5_key.strip("/").split("/")[0]
+        metrics["test_type"] = test_type or "unknown"
+        metrics["foot"] = h5_key.strip("/").split("/")[-1]
+        metrics["pipeline_version"] = PIPELINE_VERSION
 
         # ── Fusión bilateral ──────────────────────────────────────────────
         # Attempt to load and process the contralateral foot for the same
@@ -461,6 +493,9 @@ def main() -> None:
         output_metrics.parent.mkdir(parents=True, exist_ok=True)
         pd.DataFrame([metrics]).to_csv(output_metrics, index=False)
         logger.info(f"Metrics saved to: {output_metrics}")
+
+        if postgresql_cfg:
+            _persist_metrics_if_configured(postgresql_cfg, metrics, logger)
 
         # Save per-minute fatigue metrics next to the trial-wide summary.
         # Save the gait segmentation plot (S2 with HS, TO and turning).

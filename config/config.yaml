@@ -43,6 +43,9 @@ postgresql:
   password: "${POSTGRES_PASSWORD}"
   database: "${POSTGRES_DB}"
   port: ${POSTGRES_PORT}
+  schema: "public"
+  event_table: "healthywear_event"
+  results_table: "healthywear_test_results"
 
 clinical_tests:
   TUG:
@@ -67,6 +70,7 @@ gps_estimation:
 # from 3 patients. Constants are sensor- and population-specific;
 # recalibrate when hardware changes.
 spatial_models:
+  fallback_priority: [ "imu_zupt", "biometric", "gyro_norm"]
   # Gyro-norm model: stride_length = K_gyro * integral(|G|) during swing.
   # Invariant to sensor orientation. RMSE ~21% on calibration set.
   gyro_norm:
@@ -81,6 +85,6 @@ spatial_models:
   # Currently disabled: accelerometer saturates at ±2g, causing orientation drift.
   # Enable when hardware is recalibrated to ±8g.
   imu_zupt:
-    enabled: false
+    enabled: true
     madgwick_beta: 0.1
     use_magnetometer: true

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Data Model &#8212; MS-Feat Documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=6625fa76" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=b0f18b1d" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=eafc0fe6" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=56c4699f" />
+    <script src="_static/documentation_options.js?v=938c9ccc"></script>
+    <script src="_static/doctools.js?v=888ff710"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Command-Line Interface" href="cli.html" />
+    <link rel="prev" title="Pipeline Workflow" href="workflow.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  <div class="document">
+    
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">MS-Feat</a></h1>
+
+
+
+<p class="blurb">Clinical gait-analysis pipeline documentation</p>
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="overview.html">Project Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="workflow.html">Pipeline Workflow</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Data Model</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#source-tables">Source Tables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#result-table-semantics">Result Table Semantics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#result-object-view">Result Object View</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#persistence-contract">Persistence Contract</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">Command-Line Interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">Project Modules</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="workflow.html" title="previous chapter">Pipeline Workflow</a></li>
+      <li>Next: <a href="cli.html" title="next chapter">Command-Line Interface</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="data-model">
+<h1>Data Model<a class="headerlink" href="#data-model" title="Link to this heading">¶</a></h1>
+<section id="source-tables">
+<h2>Source Tables<a class="headerlink" href="#source-tables" title="Link to this heading">¶</a></h2>
+<p>healthywear_event stores the curated test windows used to drive extraction.
+The pipeline expects at least the following fields:</p>
+<ul class="simple">
+<li><p>id: unique event identifier.</p></li>
+<li><p>codeid: patient code.</p></li>
+<li><p>t_code: standardized test type such as 6MWT or TUG.</p></li>
+<li><p>d_from: event start timestamp.</p></li>
+<li><p>d_until: event end timestamp.</p></li>
+</ul>
+</section>
+<section id="result-table-semantics">
+<h2>Result Table Semantics<a class="headerlink" href="#result-table-semantics" title="Link to this heading">¶</a></h2>
+<p>healthywear_test_results stores one row per event and foot.
+The natural identity is (healthywear_event_id, foot). Reprocessing the same
+test updates the existing row in place through PostgreSQL upsert semantics.</p>
+</section>
+<section id="result-object-view">
+<h2>Result Object View<a class="headerlink" href="#result-object-view" title="Link to this heading">¶</a></h2>
+<div class="graphviz"><object data="_images/graphviz-f7723905f4b5479cf3caf6e4414b859f74c5769e.svg" type="image/svg+xml" class="graphviz">
+<p class="warning">digraph ResultObject {
+    rankdir=TB;
+    node [shape=record, style=rounded];
+
+    result [label=&quot;TestResult|healthywear_event_id:int|patient_id:str|test_type:str|foot:str|pipeline_version:str|analysis_h5_key:str|analysis_timestamp:datetime&quot;];
+    temporal [label=&quot;Temporal metrics|stride_time_*|stance_time_*|swing_time_*|cadence_*|minute slopes&quot;];
+    spatial [label=&quot;Spatial metrics|spatial_method|spatial_distance_m|walking_speed_mean_m_s|stride_length_mean_m&quot;];
+    bilateral [label=&quot;Bilateral metrics|step-time asymmetry|double support|availability flag&quot;];
+    processing [label=&quot;Processing provenance|fs|cutoff_pressure|cutoff_gyro|thresholds|minute block duration&quot;];
+
+    result -&gt; temporal;
+    result -&gt; spatial;
+    result -&gt; bilateral;
+    result -&gt; processing;
+}</p></object></div>
+</section>
+<section id="persistence-contract">
+<h2>Persistence Contract<a class="headerlink" href="#persistence-contract" title="Link to this heading">¶</a></h2>
+<p>The repository layer converts computed metric dictionaries into a database-ready
+payload. Only keys present in the documented result-column map are persisted.
+This prevents accidental schema drift and makes the write contract explicit.</p>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+    <div class="clearer"></div>
+  </div>
+    <div class="footer">
+      &copy;.
+      
+      |
+      <a href="_sources/data_model.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

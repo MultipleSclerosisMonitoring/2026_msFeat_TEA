@@ -110,6 +110,8 @@ Selective extraction and HDF5 audit are also supported:
 ```bash
 poetry run extract-data --config config/config.yaml --ids 87 89
 poetry run extract-data --config config/config.yaml --codeid RHRHUG004-1 --test 6MWT
+poetry run extract-data --config config/config.yaml --ids 1234
+poetry run extract-data --config config/config.yaml --codeid RHRHUG004-1 --from-date 2025-11-01 --to-date 2025-11-30 --test 6MWT
 poetry run extract-data --config config/config.yaml --ids 87 89 --check-only
 poetry run extract-data --config config/config.yaml --test 6MWT --missing-only
 poetry run extract-data --config config/config.yaml --list-hdf5-keys
@@ -164,13 +166,15 @@ This ensures that the pipeline can always be executed from scratch.
 
 ## Documentation (Sphinx)
 
-The documentation is built using Sphinx.
+The documentation is built using Sphinx and the generated static site is published directly from `docs/`, which makes it compatible with GitHub Pages.
 
 ### Build locally
 
 ```bash
-python -m sphinx -b html docs/source docs/_build/html
+python -m sphinx -b html docsrc docs
 ```
+
+This overwrites the published HTML in place, so `docs/index.html` is always the entry point served by Pages.
 
 ## Requirements
 - Python 3.12

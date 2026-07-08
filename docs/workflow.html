@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Pipeline Workflow &#8212; MS-Feat Documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=6625fa76" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=b0f18b1d" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=eafc0fe6" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=56c4699f" />
+    <script src="_static/documentation_options.js?v=938c9ccc"></script>
+    <script src="_static/doctools.js?v=888ff710"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Data Model" href="data_model.html" />
+    <link rel="prev" title="Architecture" href="architecture.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  <div class="document">
+    
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">MS-Feat</a></h1>
+
+
+
+<p class="blurb">Clinical gait-analysis pipeline documentation</p>
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="overview.html">Project Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Pipeline Workflow</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#operational-stages">Operational Stages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#processing-sequence">Processing Sequence</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#metric-resolution-order">Metric Resolution Order</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="data_model.html">Data Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli.html">Command-Line Interface</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">Project Modules</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="architecture.html" title="previous chapter">Architecture</a></li>
+      <li>Next: <a href="data_model.html" title="next chapter">Data Model</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="pipeline-workflow">
+<h1>Pipeline Workflow<a class="headerlink" href="#pipeline-workflow" title="Link to this heading">¶</a></h1>
+<section id="operational-stages">
+<h2>Operational Stages<a class="headerlink" href="#operational-stages" title="Link to this heading">¶</a></h2>
+<ol class="arabic simple">
+<li><p>Event selection reads candidate tests from healthywear_event.</p></li>
+<li><p>Extraction queries InfluxDB within the event time window and stores each foot in HDF5.</p></li>
+<li><p>Analysis loads one HDF5 trial at a time, resamples signals, segments gait events, and computes metrics.</p></li>
+<li><p>Bilateral enrichment combines left/right feet when both are available for the same test window.</p></li>
+<li><p>Persistence upserts the final metrics into healthywear_test_results.</p></li>
+</ol>
+</section>
+<section id="processing-sequence">
+<h2>Processing Sequence<a class="headerlink" href="#processing-sequence" title="Link to this heading">¶</a></h2>
+<div class="graphviz"><object data="_images/graphviz-1c15c148556d18070353a45f03f8d48c49187249.svg" type="image/svg+xml" class="graphviz">
+<p class="warning">digraph Sequence {
+    rankdir=LR;
+    node [shape=record, style=rounded];
+
+    cli_extract [label=&quot;CLI\nextract-data&quot;];
+    repo [label=&quot;HealthywearPostgresRepository&quot;];
+    extractor [label=&quot;GaitDataExtractor&quot;];
+    influx [label=&quot;InfluxDB&quot;];
+    hdf5 [label=&quot;HDF5 store&quot;];
+    cli_analyze [label=&quot;CLI\nanalyze-gait / run_batch&quot;];
+    processor [label=&quot;GaitDataProcessor&quot;];
+    results [label=&quot;healthywear_test_results&quot;];
+
+    cli_extract -&gt; repo [label=&quot;fetch_events(selector)&quot;];
+    repo -&gt; cli_extract [label=&quot;event rows&quot;];
+    cli_extract -&gt; extractor [label=&quot;run_batch_extraction_from_rows()&quot;];
+    extractor -&gt; influx [label=&quot;query_data_frame()&quot;];
+    influx -&gt; extractor [label=&quot;raw gait dataframe&quot;];
+    extractor -&gt; hdf5 [label=&quot;to_hdf(key per foot)&quot;];
+    cli_analyze -&gt; hdf5 [label=&quot;read trial&quot;];
+    cli_analyze -&gt; processor [label=&quot;process_signals()&quot;];
+    processor -&gt; cli_analyze [label=&quot;metrics + events&quot;];
+    cli_analyze -&gt; repo [label=&quot;upsert_test_result()&quot;];
+    repo -&gt; results [label=&quot;INSERT ... ON CONFLICT DO UPDATE&quot;];
+}</p></object></div>
+</section>
+<section id="metric-resolution-order">
+<h2>Metric Resolution Order<a class="headerlink" href="#metric-resolution-order" title="Link to this heading">¶</a></h2>
+<p>Spatial metrics are resolved in layers:</p>
+<ul class="simple">
+<li><p>fixed known-distance logic when the clinical protocol defines it;</p></li>
+<li><p>GPS when the test and data quality make it viable;</p></li>
+<li><p>IMU-based approaches such as imu_zupt when enabled;</p></li>
+<li><p>configured fallback models such as biometric or gyro_norm.</p></li>
+</ul>
+<p>This layered approach ensures that spatial_method always records which
+model produced the published distance, speed, and stride-length values.</p>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+    <div class="clearer"></div>
+  </div>
+    <div class="footer">
+      &copy;.
+      
+      |
+      <a href="_sources/workflow.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

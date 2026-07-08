@@ -1,10 +1,11 @@
-"""
-Módulo de Extracción y Persistencia de Datos Biomecánicos (InfluxDB -> HDF5).
+"""Extraction layer for biomechanical gait data.
 
-Este módulo implementa un motor de extracción masiva que garantiza la integridad
-de las series temporales, gestiona la internacionalización de logs y centraliza
-el almacenamiento en contenedores jerárquicos de alto rendimiento.
+This module provides the bulk extractor that reads curated test windows,
+queries InfluxDB for the corresponding wearable streams, validates the
+minimum schema, and persists one HDF5 dataset per event and foot.
 """
+
+from __future__ import annotations
 
 import logging
 from pathlib import Path
@@ -14,11 +15,12 @@ import pandas as pd
 from influxdb_client import InfluxDBClient
 from pydantic import BaseModel
 
+from gait_analysis.postgresql import normalize_event_rows
 from gait_analysis.utils.messages import get_message
 
 
 class InfluxConfig(BaseModel):
-    """Esquema de validación para parámetros de conexión a InfluxDB v2."""
+    """Strongly typed InfluxDB connection settings."""
 
     url: str
     token: str
@@ -27,8 +29,14 @@ class InfluxConfig(BaseModel):
 
 
 class GaitDataExtractor:
-    """
-    Motor de extracción masiva con validación de esquema y gestión de persistencia.
+    """Bulk extractor from InfluxDB into per-foot HDF5 datasets.
+
+    Args:
+        influx_config: Mapping with the InfluxDB connection parameters.
+        output_h5: Destination HDF5 path. Relative paths are resolved from
+            the project root.
+        lang: Message language used by the logging helpers.
+        verbose: Logging verbosity level from 0 to 3.
     """
 
     def __init__(
@@ -38,17 +46,11 @@ class GaitDataExtractor:
         lang: str = "es",
         verbose: int = 1,
     ):
-        """
-        Inicializa el cliente de InfluxDB y valida el entorno de salida.
-        """
         self.lang = lang
         self.verbose = verbose
         self.logger = self._setup_logging()
-
-        # Resolución de rutas mediante Pathlib
         self.base_dir = Path(__file__).resolve().parents[2]
 
-        # Ruta de salida HDF5 configurable
         output_h5_path = Path(output_h5)
         if not output_h5_path.is_absolute():
             output_h5_path = self.base_dir / output_h5_path
@@ -70,7 +72,6 @@ class GaitDataExtractor:
         self._bucket = v_config.bucket
 
     def _setup_logging(self) -> logging.Logger:
-        """Configura el nivel de trazabilidad basado en el parámetro verbose."""
         levels = {0: logging.ERROR, 1: logging.INFO, 2: logging.DEBUG, 3: logging.DEBUG}
         level = levels.get(self.verbose, logging.INFO)
         logging.basicConfig(
@@ -81,15 +82,6 @@ class GaitDataExtractor:
         return logging.getLogger(__name__)
 
     def _validate_extracted_data(self, df: pd.DataFrame) -> bool:
-        """
-        Verifica que el DataFrame contenga las señales mínimas antes de persistir.
-
-        Required columns:
-        - _time: timestamp.
-        - S2: heel pressure sensor (used for heel-strike detection).
-        - Foot: tag identifying which foot ('Left' or 'Right'),
-          since each trial contains data from BOTH feet interleaved.
-        """
         required = {"_time", "S2", "Foot"}
         if not required.issubset(df.columns):
             missing = required - set(df.columns)
@@ -99,12 +91,6 @@ class GaitDataExtractor:
 
     @staticmethod
     def build_trial_label_from_start(start_dt: pd.Timestamp) -> str:
-        """
-        Build a stable, self-contained trial label from the test start time.
-
-        The timestamp is normalized to UTC so that the HDF5 key does not depend
-        on the original local timezone representation of the CSV.
-        """
         start_utc = start_dt.tz_convert("UTC")
         return f"start_{start_utc.strftime('%Y-%m-%dT%H-%M-%SZ')}"
 
@@ -123,9 +109,7 @@ class GaitDataExtractor:
 
     @classmethod
     def build_expected_h5_keys_from_row(cls, row: pd.Series) -> dict[str, str]:
-        start_dt = pd.to_datetime(row["d_from"])
-        if start_dt.tzinfo is None:
-            start_dt = start_dt.tz_localize("UTC")
+        start_dt = pd.to_datetime(row["d_from"], utc=True)
         codeid = str(row["codeid"])
         test_type = str(row["t_code"])
         return {
@@ -146,6 +130,7 @@ class GaitDataExtractor:
             return list(store.keys())
 
     def audit_registry_rows(self, rows: pd.DataFrame) -> list[dict[str, Any]]:
+        rows = normalize_event_rows(rows)
         existing_keys = set(self.list_hdf5_keys())
         results: list[dict[str, Any]] = []
         for _, row in rows.iterrows():
@@ -163,10 +148,10 @@ class GaitDataExtractor:
 
             results.append(
                 {
-                    "id": row.get("id"),
-                    "codeid": row.get("codeid"),
-                    "t_code": row.get("t_code"),
-                    "d_from": row.get("d_from"),
+                    "id": int(row["id"]),
+                    "codeid": row["codeid"],
+                    "t_code": row["t_code"],
+                    "d_from": row["d_from"],
                     "left_present": left_present,
                     "right_present": right_present,
                     "status": status,
@@ -185,34 +170,39 @@ class GaitDataExtractor:
         apply_test_filter: bool = True,
         missing_only: bool = False,
     ) -> None:
-        """Ejecuta el pipeline de extracción masiva definido en el registro CSV."""
         csv_path = Path(csv_filepath)
         if not csv_path.is_absolute():
             csv_path = self.base_dir / csv_path
 
         if not csv_path.exists():
-            raise FileNotFoundError(
-                get_message("csv_not_found", self.lang, path=csv_path)
-            )
+            raise FileNotFoundError(get_message("csv_not_found", self.lang, path=csv_path))
 
-        df_registry = pd.read_csv(csv_path)
+        df_registry = normalize_event_rows(pd.read_csv(csv_path))
         subset = df_registry.copy()
 
         if ids:
             subset = subset[subset["id"].isin(ids)]
-
         if codeids:
             subset = subset[subset["codeid"].isin(codeids)]
-
         if apply_test_filter and test_type is not None:
             subset = subset[subset["t_code"] == test_type]
 
-        if subset.empty:
-            raise ValueError(
-                "No records found in registry CSV for the selected filters."
-            )
+        self.run_batch_extraction_from_rows(
+            rows=subset,
+            batch_label=test_type if test_type is not None else "ALL",
+            missing_only=missing_only,
+        )
 
-        batch_label = test_type if test_type is not None else "ALL"
+    def run_batch_extraction_from_rows(
+        self,
+        rows: pd.DataFrame,
+        batch_label: str = "ALL",
+        missing_only: bool = False,
+    ) -> None:
+        subset = normalize_event_rows(rows)
+        if subset.empty:
+            raise ValueError("No records found for the selected filters.")
+
         self.logger.info(get_message("start_batch", self.lang, test=batch_label))
         self.logger.info(get_message("records_found", self.lang, n=len(subset)))
 
@@ -229,7 +219,7 @@ class GaitDataExtractor:
                 ):
                     skipped_count += 1
                     continue
-            if self._extract_patient_data(row, idx, test_type):
+            if self._extract_patient_data(row, idx):
                 saved_count += 1
 
         if saved_count == 0:
@@ -241,17 +231,13 @@ class GaitDataExtractor:
         if missing_only and skipped_count:
             self.logger.info(f"Skipped {skipped_count} trials already complete in HDF5.")
 
-    def _extract_patient_data(self, row: pd.Series, idx: int, test_type: str | None) -> bool:
-        """Consulta Flux, normalización y almacenamiento HDF5."""
+    def _extract_patient_data(self, row: pd.Series, idx: int) -> bool:
         p_id = str(row["codeid"])
-        effective_test_type = str(test_type or row["t_code"])
+        event_id = int(row["id"])
+        effective_test_type = str(row["t_code"])
 
-        start_dt = pd.to_datetime(row["d_from"])
-        stop_dt = pd.to_datetime(row["d_until"])
-
-        if start_dt.tzinfo is None:
-            start_dt = start_dt.tz_localize("UTC")
-            stop_dt = stop_dt.tz_localize("UTC")
+        start_dt = pd.to_datetime(row["d_from"], utc=True)
+        stop_dt = pd.to_datetime(row["d_until"], utc=True)
 
         trial_label = self.build_trial_label_from_start(start_dt)
         start_iso = start_dt.isoformat()
@@ -268,17 +254,12 @@ class GaitDataExtractor:
 
         try:
             df = self._client.query_api().query_data_frame(query)
-
             if isinstance(df, pd.DataFrame) and not df.empty:
                 if not self._validate_extracted_data(df):
                     self.logger.error(get_message("err_schema", self.lang, id=p_id))
                     return False
 
                 df["_time"] = df["_time"].dt.tz_localize(None)
-
-                # Each trial contains interleaved samples from BOTH feet (one
-                # sensor per foot). Persist them under separate HDF5 keys to
-                # preserve per-foot timing and avoid mixing signals.
                 metadata_columns = ["Foot", "DeviceName", "type", "result", "table"]
                 feet_present = df["Foot"].unique().tolist()
                 expected_feet = {"Left", "Right"}
@@ -300,10 +281,9 @@ class GaitDataExtractor:
                     if df_foot.empty:
                         continue
 
-                    # Drop tag columns and InfluxDB metadata that should not
-                    # propagate downstream (lat, lng, Mx, My, Mz are kept).
                     cols_to_drop = [c for c in metadata_columns if c in df_foot.columns]
                     df_foot = df_foot.drop(columns=cols_to_drop)
+                    df_foot["healthywear_event_id"] = event_id
 
                     h_key = self.build_h5_key(
                         codeid=p_id,
@@ -328,13 +308,9 @@ class GaitDataExtractor:
             self.logger.warning(get_message("no_data", self.lang, id=p_id))
             return False
 
-            self.logger.warning(get_message("no_data", self.lang, id=p_id))
-            return False
-
         except Exception as e:
             self.logger.error(get_message("err_query", self.lang, id=p_id, e=str(e)))
             return False
 
     def close(self) -> None:
-        """Finaliza la conexión con el servidor InfluxDB."""
         self._client.close()

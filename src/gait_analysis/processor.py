@@ -1630,4 +1630,34 @@ class GaitDataProcessor:
             except Exception as exc:
                 self.logger.warning(f"IMU+ZUPT failed: {exc}")
 
+        # Fallback for trials without a validated primary spatial estimate.
+        if metrics.get("spatial_method") == "none":
+            fallback_priority = spatial_models_cfg.get(
+                "fallback_priority", ["gyro_norm", "biometric"]
+            )
+            fallback_values = {
+                "gyro_norm": (
+                    float(metrics.get("gyro_norm_walking_speed_m_s", 0.0) or 0.0),
+                    float(metrics.get("gyro_norm_stride_length_m", 0.0) or 0.0),
+                ),
+                "biometric": (
+                    float(metrics.get("biometric_walking_speed_m_s", 0.0) or 0.0),
+                    float(metrics.get("biometric_stride_length_m", 0.0) or 0.0),
+                ),
+            }
+
+            for method_name in fallback_priority:
+                if method_name not in fallback_values:
+                    continue
+                speed_val, stride_val = fallback_values[method_name]
+                if speed_val > 0 and stride_val > 0:
+                    metrics["spatial_method"] = method_name
+                    metrics["walking_speed_mean_m_s"] = speed_val
+                    metrics["stride_length_mean_m"] = stride_val
+                    self.logger.info(
+                        "Spatial fallback activated: %s model promoted to main spatial metrics.",
+                        method_name,
+                    )
+                    break
+
         return df, metrics, peaks, toe_offs, per_minute_df

@@ -53,7 +53,7 @@ def _make_synthetic_s2(
     s2 = np.clip(s2, 0, None)
 
     t0 = pd.Timestamp("2025-01-01 00:00:00")
-    timestamps = pd.date_range(t0, periods=total_samples, freq=f"{1/fs:.6f}s")
+    timestamps = pd.date_range(t0, periods=total_samples, freq=pd.to_timedelta(1 / fs, unit="s"))
 
     df = pd.DataFrame({
         "_time": timestamps,
@@ -211,7 +211,7 @@ class TestComputeBilateralMetrics:
         stride_s = 1.0
         total = int(n_events * stride_s * fs)
         t0 = pd.Timestamp("2025-01-01")
-        times = pd.date_range(t0, periods=total, freq=f"{1/fs:.6f}s")
+        times = pd.date_range(t0, periods=total, freq=pd.to_timedelta(1 / fs, unit="s"))
         df = pd.DataFrame({"_time": times, "S2": np.ones(total)})
         peaks = np.array([int(i * stride_s * fs) for i in range(n_events)], dtype=int)
         toe_offs = np.array(
@@ -250,7 +250,7 @@ class TestComputeBilateralMetrics:
         t0 = pd.Timestamp("2025-01-01")
         total = len(df_l)
         times_r = pd.date_range(
-            t0 + pd.Timedelta(milliseconds=500), periods=total, freq="0.01s"
+            t0 + pd.Timedelta(milliseconds=500), periods=total, freq=pd.to_timedelta(0.01, unit="s")
         )
         df_r = pd.DataFrame({"_time": times_r, "S2": np.ones(total)})
         peaks_r = np.clip(peaks_l + offset, 0, total - 1)
@@ -308,3 +308,28 @@ class TestProcessConfig:
     def test_toe_off_method_default(self):
         cfg = ProcessConfig()
         assert cfg.toe_off_method == "derivative"
+
+class TestSpatialFallback:
+
+    def test_gyro_fallback_has_priority_over_biometric(self):
+        proc = GaitDataProcessor(ProcessConfig())
+        df = _make_synthetic_s2(n_strides=5)
+        # Ensure the gyro-norm model has a non-zero swing integral.
+        phase = np.linspace(0.0, 8.0 * np.pi, len(df))
+        df["Gx"] = 120.0 * np.sin(phase)
+        df["Gy"] = 40.0 * np.cos(phase)
+        df["Gz"] = 15.0 * np.sin(phase / 2.0)
+        _df_out, metrics, *_ = proc.process_signals(
+            df,
+            test_type="6MWT",
+            clinical_tests_cfg={},
+            gps_estimation_cfg={"min_span_m": 1000.0, "min_unique_points": 999},
+            spatial_models_cfg={
+                "gyro_norm": {"enabled": True, "K": 0.05},
+                "biometric": {"enabled": True, "K": 0.2},
+                "imu_zupt": {"enabled": False},
+            },
+        )
+        assert metrics["spatial_method"] == "gyro_norm"
+        assert metrics["walking_speed_mean_m_s"] == pytest.approx(metrics["gyro_norm_walking_speed_m_s"])
+        assert metrics["stride_length_mean_m"] == pytest.approx(metrics["gyro_norm_stride_length_m"])

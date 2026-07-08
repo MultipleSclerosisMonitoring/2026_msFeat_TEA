@@ -1,9 +1,6 @@
-"""
-Command-line interface for batch extraction of gait sensor data.
+"""Command-line interface for batch extraction of gait sensor data."""
 
-This module provides a CLI entry point to extract time-series data
-from InfluxDB and store it locally (e.g., HDF5) for further processing.
-"""
+from __future__ import annotations
 
 import argparse
 import logging
@@ -12,123 +9,89 @@ from pathlib import Path
 import pandas as pd
 
 from gait_analysis.extractor import GaitDataExtractor
+from gait_analysis.postgresql import EventSelector, HealthywearPostgresRepository, normalize_event_rows
 from gait_analysis.utils.config_loader import load_project_config
 from gait_analysis.utils.logging_config import setup_logging
 from gait_analysis.utils.messages import get_message
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """
-    Create and configure the argument parser for the extract-data CLI.
-
-    Returns:
-        argparse.ArgumentParser: Configured parser with CLI arguments.
-    """
     parser = argparse.ArgumentParser(
         description="Extract gait sensor data from InfluxDB and store it locally."
     )
-
+    parser.add_argument("--config", type=str, default="config/config.yaml")
+    parser.add_argument("--csv", type=str, default=None)
     parser.add_argument(
-        "--config",
+        "--source",
         type=str,
-        default="config/config.yaml",
-        help="Path to the project configuration YAML file.",
-    )
-
-    parser.add_argument(
-        "--csv",
-        type=str,
+        choices=["postgres", "csv"],
         default=None,
-        help="Optional override for the CSV file containing test windows.",
+        help="Registry source. Defaults to PostgreSQL unless --csv is provided.",
     )
-
-    parser.add_argument(
-        "--test",
-        type=str,
-        default=None,
-        help="Optional override for the clinical test type (e.g. 6MWT, 2MWT).",
-    )
-
-    parser.add_argument(
-        "--ids",
-        type=int,
-        nargs="+",
-        default=None,
-        help="Optional list of CSV row ids to extract or audit.",
-    )
-
-    parser.add_argument(
-        "--codeid",
-        type=str,
-        nargs="+",
-        default=None,
-        help="Optional list of patient codeid values to extract or audit.",
-    )
-
-    parser.add_argument(
-        "--missing-only",
-        action="store_true",
-        help="Extract only trials whose Left/Right keys are not both present in the HDF5.",
-    )
-
-    parser.add_argument(
-        "--list-hdf5-keys",
-        action="store_true",
-        help="List all keys currently present in the output HDF5 and exit.",
-    )
-
-    parser.add_argument(
-        "--check-only",
-        action="store_true",
-        help="Audit the selected CSV rows against the HDF5 and exit without extracting.",
-    )
-
-    parser.add_argument(
-        "--lang",
-        type=str,
-        default=None,
-        choices=["es", "en"],
-        help="Optional override for message language.",
-    )
-
-    parser.add_argument(
-        "--verbose",
-        type=int,
-        default=None,
-        choices=[0, 1, 2, 3],
-        help="Verbosity level: 0=errors, 1=info, 2=details, 3=debug.",
-    )
-
+    parser.add_argument("--test", type=str, nargs="+", default=None)
+    parser.add_argument("--ids", type=int, nargs="+", default=None)
+    parser.add_argument("--codeid", type=str, nargs="+", default=None)
+    parser.add_argument("--from-date", type=str, default=None)
+    parser.add_argument("--to-date", type=str, default=None)
+    parser.add_argument("--missing-only", action="store_true")
+    parser.add_argument("--list-hdf5-keys", action="store_true")
+    parser.add_argument("--check-only", action="store_true")
+    parser.add_argument("--lang", type=str, default=None, choices=["es", "en"])
+    parser.add_argument("--verbose", type=int, default=None, choices=[0, 1, 2, 3])
     return parser
 
 
-def _resolve_registry_subset(
+def _parse_optional_timestamp(value: str | None) -> pd.Timestamp | None:
+    if value is None:
+        return None
+    return pd.to_datetime(value, utc=True)
+
+
+def _resolve_registry_subset_from_csv(
     csv_file: Path,
     ids: list[int] | None,
     codeids: list[str] | None,
-    test_type: str | None,
-    apply_test_filter: bool,
+    test_types: list[str] | None,
+    date_from: pd.Timestamp | None,
+    date_to: pd.Timestamp | None,
 ) -> pd.DataFrame:
-    df_registry = pd.read_csv(csv_file)
-    subset = df_registry.copy()
-
+    subset = normalize_event_rows(pd.read_csv(csv_file))
     if ids:
         subset = subset[subset["id"].isin(ids)]
-
     if codeids:
         subset = subset[subset["codeid"].isin(codeids)]
+    if test_types:
+        subset = subset[subset["t_code"].isin(test_types)]
+    if date_from is not None:
+        subset = subset[subset["d_until"] >= date_from]
+    if date_to is not None:
+        subset = subset[subset["d_from"] <= date_to]
+    return subset.sort_values(["d_from", "id"]).reset_index(drop=True)
 
-    if apply_test_filter and test_type is not None:
-        subset = subset[subset["t_code"] == test_type]
 
-    return subset
+def _resolve_registry_subset_from_postgres(
+    postgres_cfg: dict,
+    ids: list[int] | None,
+    codeids: list[str] | None,
+    test_types: list[str] | None,
+    date_from: pd.Timestamp | None,
+    date_to: pd.Timestamp | None,
+) -> pd.DataFrame:
+    repo = HealthywearPostgresRepository(postgres_cfg)
+    selector = EventSelector(
+        ids=ids,
+        codeids=codeids,
+        test_types=test_types,
+        date_from=date_from.to_pydatetime() if date_from is not None else None,
+        date_to=date_to.to_pydatetime() if date_to is not None else None,
+    )
+    return repo.fetch_events(selector)
 
 
 def _print_audit_results(results: list[dict]) -> None:
     if not results:
-        print("No matching rows found in the registry CSV.")
+        print("No matching rows found in the selected registry source.")
         return
-
     for item in results:
         print(
             f"id={item['id']} codeid={item['codeid']} test={item['t_code']} "
@@ -137,12 +100,6 @@ def _print_audit_results(results: list[dict]) -> None:
 
 
 def main() -> None:
-    """
-    Entry point for the extract-data CLI command.
-
-    Parses input arguments, loads project configuration,
-    initializes the extractor, and executes batch extraction.
-    """
     parser = build_parser()
     args = parser.parse_args()
 
@@ -151,35 +108,33 @@ def main() -> None:
     paths_cfg = config.get("paths", {})
     batch_cfg = config.get("batch", {})
     influx_cfg = config.get("influxdb", {})
+    postgresql_cfg = config.get("postgresql", {})
 
     verbose = args.verbose if args.verbose is not None else project_cfg.get("verbose", 1)
     setup_logging(verbose)
 
     language = args.lang if args.lang is not None else project_cfg.get("language", "es")
+    logger = logging.getLogger(__name__)
+
+    source = args.source or ("csv" if args.csv is not None else "postgres")
     csv_path = args.csv if args.csv is not None else paths_cfg.get("registry_csv", "tests.csv")
-    has_case_filters = bool(args.ids or args.codeid)
-    test_type = args.test if args.test is not None else batch_cfg.get("test_type", "6MWT")
-    apply_test_filter = (args.test is not None) or (not has_case_filters)
+    default_test_type = batch_cfg.get("test_type")
+    test_types = args.test if args.test is not None else ([default_test_type] if default_test_type else None)
+    date_from = _parse_optional_timestamp(args.from_date)
+    date_to = _parse_optional_timestamp(args.to_date)
     output_h5 = paths_cfg.get("h5_path", "data/raw/gait_study_data.h5")
 
-    logger = logging.getLogger(__name__)
     logger.info(get_message("config_loaded", language))
-    logger.info(get_message("registry_csv_path", language, path=csv_path))
-    logger.info(
-        get_message(
-            "selected_test_type",
-            language,
-            test_type=test_type if apply_test_filter else "ALL",
+    logger.info(f"Registry source: {source}")
+    if source == "csv":
+        logger.info(get_message("registry_csv_path", language, path=csv_path))
+    if test_types:
+        logger.info(
+            get_message("selected_test_type", language, test_type=", ".join(test_types))
         )
-    )
+    else:
+        logger.info(get_message("selected_test_type", language, test_type="ALL"))
     logger.info(get_message("output_hdf5_path", language, path=output_h5))
-
-    csv_file = Path(csv_path)
-    if not csv_file.exists():
-        raise FileNotFoundError(
-            f"Registry CSV not found: {csv_file}. "
-            "Provide a valid file with --csv or configure paths.registry_csv."
-        )
 
     output_h5_path = Path(output_h5)
     output_h5_path.parent.mkdir(parents=True, exist_ok=True)
@@ -201,24 +156,38 @@ def main() -> None:
                     print(key)
             return
 
-        subset = _resolve_registry_subset(
-            csv_file=csv_file,
-            ids=args.ids,
-            codeids=args.codeid,
-            test_type=test_type,
-            apply_test_filter=apply_test_filter,
-        )
+        if source == "csv":
+            csv_file = Path(csv_path)
+            if not csv_file.exists():
+                raise FileNotFoundError(
+                    f"Registry CSV not found: {csv_file}. Provide a valid file with --csv or configure paths.registry_csv."
+                )
+            subset = _resolve_registry_subset_from_csv(
+                csv_file=csv_file,
+                ids=args.ids,
+                codeids=args.codeid,
+                test_types=test_types,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        else:
+            subset = _resolve_registry_subset_from_postgres(
+                postgres_cfg=postgresql_cfg,
+                ids=args.ids,
+                codeids=args.codeid,
+                test_types=test_types,
+                date_from=date_from,
+                date_to=date_to,
+            )
 
         if args.check_only:
             _print_audit_results(extractor.audit_registry_rows(subset))
             return
 
-        extractor.run_batch_extraction(
-            csv_filepath=csv_file,
-            test_type=test_type,
-            ids=args.ids,
-            codeids=args.codeid,
-            apply_test_filter=apply_test_filter,
+        batch_label = ",".join(test_types) if test_types else "ALL"
+        extractor.run_batch_extraction_from_rows(
+            rows=subset,
+            batch_label=batch_label,
             missing_only=args.missing_only,
         )
     finally:
