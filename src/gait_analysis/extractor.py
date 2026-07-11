@@ -90,6 +90,86 @@ class GaitDataExtractor:
         return True
 
     @staticmethod
+    def _coerce_query_result_to_dataframe(result: Any) -> pd.DataFrame:
+        """Normalize InfluxDB query results to a single dataframe."""
+        if isinstance(result, pd.DataFrame):
+            return result
+        if isinstance(result, list):
+            frames = [item for item in result if isinstance(item, pd.DataFrame) and not item.empty]
+            if not frames:
+                return pd.DataFrame()
+            return pd.concat(frames, ignore_index=True)
+        return pd.DataFrame()
+
+    def _build_event_query(self, row: pd.Series) -> tuple[str, str, int, str, pd.Timestamp]:
+        p_id = str(row["codeid"])
+        event_id = int(row["id"])
+        effective_test_type = str(row["t_code"])
+
+        start_dt = pd.to_datetime(row["d_from"], utc=True)
+        stop_dt = pd.to_datetime(row["d_until"], utc=True)
+        start_iso = start_dt.isoformat()
+        stop_iso = stop_dt.isoformat()
+
+        query = f"""
+        from(bucket: "{self._bucket}")
+          |> range(start: {start_iso}, stop: {stop_iso})
+          |> filter(fn: (r) => r["_measurement"] == "Gait")
+          |> filter(fn: (r) => r["CodeID"] == "{p_id}")
+          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+          |> drop(columns: ["_start", "_stop", "_measurement", "result", "table", "CodeID", "app", "mac"])
+        """
+        return query, p_id, event_id, effective_test_type, start_dt
+
+    def extract_event_frames(self, row: pd.Series) -> dict[str, pd.DataFrame]:
+        """Extract one curated event from InfluxDB and return per-foot dataframes."""
+        query, p_id, event_id, _, start_dt = self._build_event_query(row)
+        trial_label = self.build_trial_label_from_start(start_dt)
+
+        try:
+            result = self._client.query_api().query_data_frame(query)
+            df = self._coerce_query_result_to_dataframe(result)
+            if df.empty:
+                self.logger.warning(get_message("no_data", self.lang, id=p_id))
+                return {}
+
+            if not self._validate_extracted_data(df):
+                self.logger.error(get_message("err_schema", self.lang, id=p_id))
+                return {}
+
+            df["_time"] = pd.to_datetime(df["_time"], utc=True).dt.tz_localize(None)
+            metadata_columns = ["Foot", "DeviceName", "type", "result", "table"]
+            feet_present = df["Foot"].unique().tolist()
+            expected_feet = {"Left", "Right"}
+            missing_feet = expected_feet - set(feet_present)
+            if missing_feet:
+                self.logger.warning(
+                    f"[{p_id}] {trial_label}: missing data for foot(s): {missing_feet}"
+                )
+
+            foot_frames: dict[str, pd.DataFrame] = {}
+            for foot in feet_present:
+                if foot not in expected_feet:
+                    self.logger.warning(
+                        f"[{p_id}] {trial_label}: ignoring unexpected foot label '{foot}'"
+                    )
+                    continue
+
+                df_foot = df[df["Foot"] == foot].copy()
+                if df_foot.empty:
+                    continue
+
+                cols_to_drop = [c for c in metadata_columns if c in df_foot.columns]
+                df_foot = df_foot.drop(columns=cols_to_drop)
+                df_foot["healthywear_event_id"] = event_id
+                foot_frames[foot] = df_foot
+
+            return foot_frames
+        except Exception as e:
+            self.logger.error(get_message("err_query", self.lang, id=p_id, e=str(e)))
+            return {}
+
+    @staticmethod
     def build_trial_label_from_start(start_dt: pd.Timestamp) -> str:
         start_utc = start_dt.tz_convert("UTC")
         return f"start_{start_utc.strftime('%Y-%m-%dT%H-%M-%SZ')}"
@@ -233,84 +313,29 @@ class GaitDataExtractor:
 
     def _extract_patient_data(self, row: pd.Series, idx: int) -> bool:
         p_id = str(row["codeid"])
-        event_id = int(row["id"])
         effective_test_type = str(row["t_code"])
-
         start_dt = pd.to_datetime(row["d_from"], utc=True)
-        stop_dt = pd.to_datetime(row["d_until"], utc=True)
+        foot_frames = self.extract_event_frames(row)
+        saved_any = False
 
-        trial_label = self.build_trial_label_from_start(start_dt)
-        start_iso = start_dt.isoformat()
-        stop_iso = stop_dt.isoformat()
+        for foot, df_foot in foot_frames.items():
+            h_key = self.build_h5_key(
+                codeid=p_id,
+                test_type=effective_test_type,
+                start_dt=start_dt,
+                foot=foot,
+            )
+            df_foot.to_hdf(
+                self.h5_database,
+                key=h_key,
+                mode="a",
+                format="table",
+                data_columns=True,
+            )
+            self.logger.info(get_message("save_ok", self.lang, id=p_id, h5_key=h_key))
+            saved_any = True
 
-        query = f'''
-        from(bucket: "{self._bucket}")
-          |> range(start: {start_iso}, stop: {stop_iso})
-          |> filter(fn: (r) => r["_measurement"] == "Gait")
-          |> filter(fn: (r) => r["CodeID"] == "{p_id}")
-          |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-          |> drop(columns: ["_start", "_stop", "_measurement", "result", "table", "CodeID", "app", "mac"])
-        '''
-
-        try:
-            df = self._client.query_api().query_data_frame(query)
-            if isinstance(df, pd.DataFrame) and not df.empty:
-                if not self._validate_extracted_data(df):
-                    self.logger.error(get_message("err_schema", self.lang, id=p_id))
-                    return False
-
-                df["_time"] = df["_time"].dt.tz_localize(None)
-                metadata_columns = ["Foot", "DeviceName", "type", "result", "table"]
-                feet_present = df["Foot"].unique().tolist()
-                expected_feet = {"Left", "Right"}
-                missing_feet = expected_feet - set(feet_present)
-                if missing_feet:
-                    self.logger.warning(
-                        f"[{p_id}] {trial_label}: missing data for foot(s): {missing_feet}"
-                    )
-
-                saved_any = False
-                for foot in feet_present:
-                    if foot not in expected_feet:
-                        self.logger.warning(
-                            f"[{p_id}] {trial_label}: ignoring unexpected foot label '{foot}'"
-                        )
-                        continue
-
-                    df_foot = df[df["Foot"] == foot].copy()
-                    if df_foot.empty:
-                        continue
-
-                    cols_to_drop = [c for c in metadata_columns if c in df_foot.columns]
-                    df_foot = df_foot.drop(columns=cols_to_drop)
-                    df_foot["healthywear_event_id"] = event_id
-
-                    h_key = self.build_h5_key(
-                        codeid=p_id,
-                        test_type=effective_test_type,
-                        start_dt=start_dt,
-                        foot=foot,
-                    )
-                    df_foot.to_hdf(
-                        self.h5_database,
-                        key=h_key,
-                        mode="a",
-                        format="table",
-                        data_columns=True,
-                    )
-                    self.logger.info(
-                        get_message("save_ok", self.lang, id=p_id, h5_key=h_key)
-                    )
-                    saved_any = True
-
-                return saved_any
-
-            self.logger.warning(get_message("no_data", self.lang, id=p_id))
-            return False
-
-        except Exception as e:
-            self.logger.error(get_message("err_query", self.lang, id=p_id, e=str(e)))
-            return False
+        return saved_any
 
     def close(self) -> None:
         self._client.close()

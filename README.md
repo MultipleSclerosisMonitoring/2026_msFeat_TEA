@@ -156,6 +156,22 @@ You can analyze a specific extracted trial without editing the config file:
 poetry run analyze-gait --config config/config.yaml \
   --h5-key p_RHRHUG004-1/6MWT/start_2025-11-28T12-46-09Z/Right
 ```
+
+### Direct batch without HDF5 intermediate
+When you want to run the whole pipeline in one pass from curated events,
+use the direct batch CLI. It selects events from PostgreSQL (or CSV),
+queries InfluxDB, processes both feet in memory, writes a batch CSV, and
+optionally upserts results to PostgreSQL.
+
+```bash
+poetry run run-direct-batch --config config/config.yaml --source postgres --ids 66 67 68
+poetry run run-direct-batch --config config/config.yaml --source postgres --ids $(seq 66 100)
+poetry run run-direct-batch --config config/config.yaml --test-type 6MWT --from-date 2026-01-01 --to-date 2026-03-31
+```
+
+Use `--no-postgres-persist` if you only want CSV outputs, and `--no-plots`
+to skip figure generation during large runs.
+
 ### Important note
 The file data/raw/gait_study_data.h5 is not included in the repository.
 If it does not exist, the analysis command will fail with an explicit error indicating how to regenerate it:

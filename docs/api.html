@@ -349,6 +349,17 @@ the project root.</p></li>
 </dd>
 </dl>
 <dl class="py method">
+<dt class="sig sig-object py" id="gait_analysis.extractor.GaitDataExtractor.extract_event_frames">
+<span class="sig-name descname"><span class="pre">extract_event_frames</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">row</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Series</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">DataFrame</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/gait_analysis/extractor.html#GaitDataExtractor.extract_event_frames"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.extractor.GaitDataExtractor.extract_event_frames" title="Link to this definition">¶</a></dt>
+<dd><p>Extract one curated event from InfluxDB and return per-foot dataframes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>dict</em>[<em>str</em>, <em>DataFrame</em>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="gait_analysis.extractor.GaitDataExtractor.build_trial_label_from_start">
 <em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">build_trial_label_from_start</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">start_dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Timestamp</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference internal" href="_modules/gait_analysis/extractor.html#GaitDataExtractor.build_trial_label_from_start"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gait_analysis.extractor.GaitDataExtractor.build_trial_label_from_start" title="Link to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
@@ -1116,6 +1127,7 @@ and optional plots.</p>
 </ul>
 </li>
 <li><a class="reference internal" href="#gait_analysis.extractor.GaitDataExtractor"><code class="docutils literal notranslate"><span class="pre">GaitDataExtractor</span></code></a><ul>
+<li><a class="reference internal" href="#gait_analysis.extractor.GaitDataExtractor.extract_event_frames"><code class="docutils literal notranslate"><span class="pre">extract_event_frames()</span></code></a></li>
 <li><a class="reference internal" href="#gait_analysis.extractor.GaitDataExtractor.build_trial_label_from_start"><code class="docutils literal notranslate"><span class="pre">build_trial_label_from_start()</span></code></a></li>
 <li><a class="reference internal" href="#gait_analysis.extractor.GaitDataExtractor.build_h5_key"><code class="docutils literal notranslate"><span class="pre">build_h5_key()</span></code></a></li>
 <li><a class="reference internal" href="#gait_analysis.extractor.GaitDataExtractor.build_expected_h5_keys_from_row"><code class="docutils literal notranslate"><span class="pre">build_expected_h5_keys_from_row()</span></code></a></li>

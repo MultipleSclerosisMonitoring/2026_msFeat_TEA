@@ -30,6 +30,7 @@ furo = "^2024.8.6"
 [tool.poetry.scripts]
 extract-data = "gait_analysis.cli.extract_data:main"
 analyze-gait = "gait_analysis.cli.analyze_gait:main"
+run-direct-batch = "gait_analysis.cli.run_direct_batch:main"
 
 [build-system]
 requires = ["poetry-core"]

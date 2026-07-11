@@ -33,6 +33,20 @@ optionally persist the results when the PostgreSQL configuration is available.
 Batch analysis can be orchestrated by scripts/run_batch.py when both feet
 and multiple events must be processed in one run.
 
+Direct Batch CLI
+----------------
+
+Use run-direct-batch when you want to execute the full operational flow in one
+pass, without materializing intermediate HDF5 datasets. The command selects
+curated events, queries InfluxDB, processes each available foot in memory,
+writes a batch CSV, and optionally upserts the results into PostgreSQL.
+
+.. code-block:: bash
+
+   poetry run run-direct-batch --config config/config.yaml --source postgres --ids 66 67 68
+   poetry run run-direct-batch --config config/config.yaml --source postgres --ids 66 67 68 --no-postgres-persist
+   poetry run run-direct-batch --config config/config.yaml --test-type 6MWT --from-date 2026-01-01 --to-date 2026-03-31
+
 Operational Guidance
 --------------------
 

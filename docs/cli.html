@@ -298,6 +298,18 @@ optionally persist the results when the PostgreSQL configuration is available.</
 <p>Batch analysis can be orchestrated by scripts/run_batch.py when both feet
 and multiple events must be processed in one run.</p>
 </section>
+<section id="direct-batch-cli">
+<h2>Direct Batch CLI<a class="headerlink" href="#direct-batch-cli" title="Link to this heading">¶</a></h2>
+<p>Use run-direct-batch when you want to execute the full operational flow in one
+pass, without materializing intermediate HDF5 datasets. The command selects
+curated events, queries InfluxDB, processes each available foot in memory,
+writes a batch CSV, and optionally upserts the results into PostgreSQL.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>run-direct-batch<span class="w"> </span>--config<span class="w"> </span>config/config.yaml<span class="w"> </span>--source<span class="w"> </span>postgres<span class="w"> </span>--ids<span class="w"> </span><span class="m">66</span><span class="w"> </span><span class="m">67</span><span class="w"> </span><span class="m">68</span>
+poetry<span class="w"> </span>run<span class="w"> </span>run-direct-batch<span class="w"> </span>--config<span class="w"> </span>config/config.yaml<span class="w"> </span>--source<span class="w"> </span>postgres<span class="w"> </span>--ids<span class="w"> </span><span class="m">66</span><span class="w"> </span><span class="m">67</span><span class="w"> </span><span class="m">68</span><span class="w"> </span>--no-postgres-persist
+poetry<span class="w"> </span>run<span class="w"> </span>run-direct-batch<span class="w"> </span>--config<span class="w"> </span>config/config.yaml<span class="w"> </span>--test-type<span class="w"> </span>6MWT<span class="w"> </span>--from-date<span class="w"> </span><span class="m">2026</span>-01-01<span class="w"> </span>--to-date<span class="w"> </span><span class="m">2026</span>-03-31
+</pre></div>
+</div>
+</section>
 <section id="operational-guidance">
 <h2>Operational Guidance<a class="headerlink" href="#operational-guidance" title="Link to this heading">¶</a></h2>
 <ul class="simple">
@@ -367,6 +379,7 @@ and multiple events must be processed in one run.</p>
 <li><a class="reference internal" href="#">Command-Line Interface</a><ul>
 <li><a class="reference internal" href="#extraction-cli">Extraction CLI</a></li>
 <li><a class="reference internal" href="#analysis-cli">Analysis CLI</a></li>
+<li><a class="reference internal" href="#direct-batch-cli">Direct Batch CLI</a></li>
 <li><a class="reference internal" href="#operational-guidance">Operational Guidance</a></li>
 </ul>
 </li>
