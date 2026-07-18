@@ -60,11 +60,15 @@ clinical_tests:
 
 gps_estimation:
   # Spatial estimation via GPS for tests without a known fixed distance
-  # (typically 6MWT). The filter rejects trials where the GPS does not
-  # show enough geographic span — usually indoor sessions where the GPS
-  # drifts but the patient does not actually move along a long path.
+  # (typically 6MWT). The trajectory is first smoothed to suppress isolated
+  # GPS outliers and a travelled distance is reconstructed using both the
+  # direct consecutive path and an indoor corridor approximation. The 100 m
+  # threshold is then applied to that reconstructed distance, not to the raw
+  # net span from the start point.
   min_span_m: 100.0
   min_unique_points: 10
+  max_path_span_ratio: 3.0
+  min_turn_episodes: 2
 
 # Spatial estimation models for 6MWT indoor trials where GPS is not
 # available. Both models are calibrated using 5 outdoor GPS trials

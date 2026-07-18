@@ -17,7 +17,10 @@ from gait_analysis.processor import (
     GaitDataProcessor,
     ProcessConfig,
     compute_bilateral_metrics,
+    compute_gps_path_metrics,
+    estimate_indoor_corridor_path_m,
     haversine_m,
+    smooth_gps_trajectory,
 )
 
 
@@ -77,6 +80,33 @@ def _make_metrics(stride_time_s: float, cadence_spm: float, stance_time_s: float
 
 
 # ── 1. haversine_m ────────────────────────────────────────────────────────────
+
+class TestGpsPathMetrics:
+
+    def test_smooth_gps_trajectory_removes_isolated_spike(self):
+        lat = np.array([40.0, 40.00001, 40.01, 40.00002, 40.00003])
+        lng = np.array([-3.0, -3.0, -3.01, -3.0, -3.0])
+        result = smooth_gps_trajectory(lat, lng, outlier_distance_m=50.0)
+        assert result["n_replaced"] == 1
+        assert abs(result["lat"][2] - 40.00002) < 1e-4
+
+    def test_indoor_corridor_path_accumulates_back_and_forth_distance(self):
+        lat = np.array([40.0, 40.0, 40.0, 40.0, 40.0])
+        lng = np.array([-3.0, -2.9998, -2.9996, -2.9998, -3.0])
+        corridor_path = estimate_indoor_corridor_path_m(lat, lng)
+        direct_span = haversine_m(lat[0], lng[0], lat[2], lng[2])
+        assert corridor_path > direct_span
+        assert corridor_path > 60.0
+
+    def test_compute_gps_path_metrics_reports_corridor_and_outliers(self):
+        lat = np.array([40.0, 40.00001, 40.01, 40.00002, 40.00003])
+        lng = np.array([-3.0, -2.9999, -3.01, -2.9998, -2.9997])
+        metrics = compute_gps_path_metrics(lat, lng)
+        assert "corridor_path_m" in metrics
+        assert "n_smoothed_outliers" in metrics
+        assert metrics["n_smoothed_outliers"] >= 1
+        assert metrics["corridor_path_m"] >= 0.0
+
 
 class TestHaversine:
 
@@ -308,6 +338,90 @@ class TestProcessConfig:
     def test_toe_off_method_default(self):
         cfg = ProcessConfig()
         assert cfg.toe_off_method == "derivative"
+
+class TestGpsAcceptanceLogic:
+
+    def _make_gps_trial(self, corridor_lngs, turn_segments=None):
+        df = _make_synthetic_s2(fs=100.0, n_strides=max(8, len(corridor_lngs)), stride_time_s=1.0)
+        n = len(df)
+        anchor_idx = np.linspace(0, n - 1, len(corridor_lngs)).astype(int)
+        lat = np.interp(np.arange(n), anchor_idx, np.full(len(corridor_lngs), 40.0))
+        lng = np.interp(np.arange(n), anchor_idx, np.asarray(corridor_lngs, dtype=float))
+        df['lat'] = lat
+        df['lng'] = lng
+        df['Gx'] = 0.0
+        df['Gy'] = 0.0
+        df['Gz'] = 0.0
+        if turn_segments:
+            for start, end in turn_segments:
+                start_idx = anchor_idx[start]
+                end_idx = anchor_idx[min(end, len(anchor_idx) - 1)] + 1
+                df.loc[start_idx:end_idx, 'Gz'] = 400.0
+        return df
+
+    def test_gps_rejects_implausible_path_span_ratio(self):
+        proc = GaitDataProcessor(ProcessConfig(fs=100.0, min_peak_distance_s=0.5))
+        df = self._make_gps_trial([-3.0, -2.9995, -2.9999, -2.9994, -2.9998, -2.9993])
+        _df_out, metrics, *_ = proc.process_signals(
+            df,
+            test_type='6MWT',
+            clinical_tests_cfg={},
+            gps_estimation_cfg={
+                'min_span_m': 100.0,
+                'min_unique_points': 4,
+                'max_path_span_ratio': 1.5,
+                'min_turn_episodes': 1,
+            },
+            spatial_models_cfg={
+                'gyro_norm': {'enabled': False},
+                'biometric': {'enabled': False},
+                'imu_zupt': {'enabled': False},
+            },
+        )
+        assert metrics['spatial_method'] == 'none'
+
+    def test_gps_indoor_corridor_requires_turn_evidence(self):
+        proc = GaitDataProcessor(ProcessConfig(fs=100.0, min_peak_distance_s=0.5))
+        lngs = [-3.0, -2.99985, -2.9997, -2.99985, -3.0, -2.99985, -2.9997, -2.99985, -3.0]
+        df_no_turns = self._make_gps_trial(lngs, turn_segments=None)
+        _df_out, metrics_no_turns, *_ = proc.process_signals(
+            df_no_turns,
+            test_type='6MWT',
+            clinical_tests_cfg={},
+            gps_estimation_cfg={
+                'min_span_m': 100.0,
+                'min_unique_points': 4,
+                'max_path_span_ratio': 5.0,
+                'min_turn_episodes': 1,
+            },
+            spatial_models_cfg={
+                'gyro_norm': {'enabled': False},
+                'biometric': {'enabled': False},
+                'imu_zupt': {'enabled': False},
+            },
+        )
+        assert metrics_no_turns['spatial_method'] == 'none'
+
+        df_with_turns = self._make_gps_trial(lngs, turn_segments=[(2, 3), (6, 7)])
+        _df_out, metrics_with_turns, *_ = proc.process_signals(
+            df_with_turns,
+            test_type='6MWT',
+            clinical_tests_cfg={},
+            gps_estimation_cfg={
+                'min_span_m': 100.0,
+                'min_unique_points': 4,
+                'max_path_span_ratio': 5.0,
+                'min_turn_episodes': 1,
+            },
+            spatial_models_cfg={
+                'gyro_norm': {'enabled': False},
+                'biometric': {'enabled': False},
+                'imu_zupt': {'enabled': False},
+            },
+        )
+        assert metrics_with_turns['spatial_method'] == 'gps'
+        assert metrics_with_turns['spatial_distance_m'] >= 100.0
+
 
 class TestSpatialFallback:
 

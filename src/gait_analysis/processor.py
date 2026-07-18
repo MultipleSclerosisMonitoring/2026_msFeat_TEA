@@ -50,56 +50,135 @@ def haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return 2.0 * R * math.asin(math.sqrt(a))
 
 
+def _latlng_to_local_xy_m(
+    lat_array: np.ndarray, lng_array: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Project latitude/longitude arrays to a local Cartesian plane in metres."""
+    lat0 = float(lat_array[0])
+    lng0 = float(lng_array[0])
+    mean_lat_rad = math.radians(float(np.nanmean(lat_array)))
+    x_m = (lng_array - lng0) * 111_320.0 * math.cos(mean_lat_rad)
+    y_m = (lat_array - lat0) * 110_540.0
+    return x_m.astype(float), y_m.astype(float)
+
+
+
+def smooth_gps_trajectory(
+    lat_array: np.ndarray,
+    lng_array: np.ndarray,
+    outlier_distance_m: float = 35.0,
+) -> dict[str, np.ndarray | int]:
+    """
+    Replace isolated GPS spikes with a local median estimate.
+
+    A sample is smoothed only when both adjacent jumps are large but the
+    direct bridge between its neighbours is short, which is the typical
+    fingerprint of a single bad fix.
+    """
+    lat = np.asarray(lat_array, dtype=float).copy()
+    lng = np.asarray(lng_array, dtype=float).copy()
+    n = len(lat)
+    if n < 3:
+        return {"lat": lat, "lng": lng, "n_replaced": 0}
+
+    replaced = 0
+    for i in range(1, n - 1):
+        d_prev = haversine_m(lat[i - 1], lng[i - 1], lat[i], lng[i])
+        d_next = haversine_m(lat[i], lng[i], lat[i + 1], lng[i + 1])
+        d_bridge = haversine_m(lat[i - 1], lng[i - 1], lat[i + 1], lng[i + 1])
+        if (
+            d_prev > outlier_distance_m
+            and d_next > outlier_distance_m
+            and d_bridge < outlier_distance_m
+        ):
+            lat[i] = float(np.median(lat[i - 1 : i + 2]))
+            lng[i] = float(np.median(lng[i - 1 : i + 2]))
+            replaced += 1
+
+    return {"lat": lat, "lng": lng, "n_replaced": replaced}
+
+
+
+def estimate_indoor_corridor_path_m(
+    lat_array: np.ndarray,
+    lng_array: np.ndarray,
+) -> float:
+    """
+    Estimate indoor back-and-forth distance along the dominant corridor axis.
+
+    GPS fixes are projected to a local plane, collapsed onto their first
+    principal axis and integrated as absolute displacement. This lets an
+    ida-vuelta corridor accumulate distance even when the net displacement is
+    small.
+    """
+    if len(lat_array) < 2:
+        return 0.0
+
+    x_m, y_m = _latlng_to_local_xy_m(lat_array, lng_array)
+    coords = np.column_stack([x_m, y_m])
+    centered = coords - coords.mean(axis=0, keepdims=True)
+    _, _, vh = np.linalg.svd(centered, full_matrices=False)
+    axis = vh[0]
+    proj = centered @ axis
+    return float(np.abs(np.diff(proj)).sum())
+
+
+
+def _count_turn_episodes(turn_flags: np.ndarray) -> int:
+    """Count contiguous turning episodes from a boolean turning mask."""
+    turns = np.asarray(turn_flags, dtype=bool)
+    if turns.size == 0:
+        return 0
+    starts = np.flatnonzero(turns & ~np.r_[False, turns[:-1]])
+    return int(len(starts))
+
+
 def compute_gps_path_metrics(
     lat_array: np.ndarray, lng_array: np.ndarray
 ) -> Dict[str, float]:
     """
     Compute path-based GPS metrics from latitude / longitude arrays.
 
-    Parameters
-    ----------
-    lat_array, lng_array : np.ndarray
-        Latitude and longitude in decimal degrees, with NaNs already
-        removed and arrays of equal length.
-
-    Returns
-    -------
-    dict with:
-        - n_unique_points : int. Number of distinct GPS coordinates
-          (lat/lng rounded to 6 decimal places, ~0.1 m precision).
-        - span_m : float. Maximum great-circle distance from the first
-          fix to any other fix. For a back-and-forth walking course
-          this is roughly half of the actual path length.
-        - total_path_m : float. Sum of consecutive haversine
-          distances. Approximates total distance walked, but is
-          biased upward by GPS noise (each random jitter adds path
-          length). For static recordings it should ideally be 0.
+    The raw GPS trajectory is first smoothed to suppress isolated outlier fixes.
+    Then we report both the direct consecutive-path estimate and an indoor
+    corridor estimate based on absolute motion along the dominant axis.
     """
     n = len(lat_array)
     if n < 2:
-        return {"n_unique_points": int(n), "span_m": 0.0, "total_path_m": 0.0}
+        return {
+            "n_unique_points": int(n),
+            "span_m": 0.0,
+            "total_path_m": 0.0,
+            "corridor_path_m": 0.0,
+            "n_smoothed_outliers": 0,
+        }
 
-    rounded = np.column_stack(
-        [np.round(lat_array, 6), np.round(lng_array, 6)]
-    )
+    smoothed = smooth_gps_trajectory(lat_array, lng_array)
+    lat_s = smoothed["lat"]
+    lng_s = smoothed["lng"]
+
+    rounded = np.column_stack([np.round(lat_s, 6), np.round(lng_s, 6)])
     n_unique = int(len(np.unique(rounded, axis=0)))
 
     distances_from_start = np.array([
-        haversine_m(lat_array[0], lng_array[0], lat_array[i], lng_array[i])
+        haversine_m(lat_s[0], lng_s[0], lat_s[i], lng_s[i])
         for i in range(n)
     ])
     span_m = float(distances_from_start.max())
 
     consecutive = np.array([
-        haversine_m(lat_array[i - 1], lng_array[i - 1], lat_array[i], lng_array[i])
+        haversine_m(lat_s[i - 1], lng_s[i - 1], lat_s[i], lng_s[i])
         for i in range(1, n)
     ])
     total_path_m = float(consecutive.sum())
+    corridor_path_m = float(estimate_indoor_corridor_path_m(lat_s, lng_s))
 
     return {
         "n_unique_points": n_unique,
         "span_m": span_m,
         "total_path_m": total_path_m,
+        "corridor_path_m": corridor_path_m,
+        "n_smoothed_outliers": int(smoothed["n_replaced"]),
     }
 
 
@@ -1141,6 +1220,8 @@ class GaitDataProcessor:
             "gps_n_unique_points": 0,
             "gps_span_m": 0.0,
             "gps_total_path_m": 0.0,
+            "gps_corridor_path_m": 0.0,
+            "gps_smoothed_outliers": 0,
             "gyro_norm_stride_length_m": 0.0,
             "gyro_norm_walking_speed_m_s": 0.0,
             "biometric_stride_length_m": 0.0,
@@ -1401,6 +1482,8 @@ class GaitDataProcessor:
             )
             min_span_m = float(gps_cfg.get("min_span_m", 0.0))
             min_unique = int(gps_cfg.get("min_unique_points", 0))
+            max_path_span_ratio = float(gps_cfg.get("max_path_span_ratio", 3.0))
+            min_turn_episodes = int(gps_cfg.get("min_turn_episodes", 2))
 
             if {"lat", "lng"}.issubset(df.columns):
                 gps_df = (
@@ -1416,6 +1499,8 @@ class GaitDataProcessor:
                     metrics["gps_n_unique_points"] = gps_metrics["n_unique_points"]
                     metrics["gps_span_m"] = gps_metrics["span_m"]
                     metrics["gps_total_path_m"] = gps_metrics["total_path_m"]
+                    metrics["gps_corridor_path_m"] = gps_metrics["corridor_path_m"]
+                    metrics["gps_smoothed_outliers"] = gps_metrics["n_smoothed_outliers"]
 
                     walking_duration_s = float(
                         metrics.get("walking_duration_s", 0.0)
@@ -1423,15 +1508,25 @@ class GaitDataProcessor:
                     stride_time_mean_s = float(
                         metrics.get("stride_time_mean_s", 0.0)
                     )
-
-                    if gps_metrics["span_m"] < min_span_m:
-                        self.logger.warning(
-                            f"GPS span ({gps_metrics['span_m']:.1f} m) below "
-                            f"threshold ({min_span_m:.1f} m). Likely indoor "
-                            f"session; GPS-based spatial metrics not "
-                            f"computed for {test_type}."
+                    turn_episodes = 0
+                    if "is_turning" in df.columns:
+                        turn_episodes = _count_turn_episodes(
+                            df["is_turning"].to_numpy(dtype=bool)
                         )
-                    elif gps_metrics["n_unique_points"] < min_unique:
+
+                    direct_distance_m = float(gps_metrics["total_path_m"])
+                    corridor_distance_m = float(gps_metrics["corridor_path_m"])
+                    span_m = float(gps_metrics["span_m"])
+                    path_span_ratio = (
+                        direct_distance_m / span_m if span_m > 0 else float("inf")
+                    )
+                    using_indoor_rescue = span_m < min_span_m
+                    if using_indoor_rescue:
+                        candidate_distance_m = corridor_distance_m
+                    else:
+                        candidate_distance_m = direct_distance_m
+
+                    if gps_metrics["n_unique_points"] < min_unique:
                         self.logger.warning(
                             f"GPS unique points "
                             f"({gps_metrics['n_unique_points']}) below "
@@ -1443,14 +1538,28 @@ class GaitDataProcessor:
                             f"walking_duration_s is non-positive; cannot "
                             f"derive GPS speed for {test_type}."
                         )
-                    else:
-                        walking_speed = (
-                            gps_metrics["total_path_m"] / walking_duration_s
+                    elif path_span_ratio > max_path_span_ratio:
+                        self.logger.warning(
+                            f"GPS path/span ratio ({path_span_ratio:.2f}) above "
+                            f"threshold ({max_path_span_ratio:.2f}). Likely GPS jitter; "
+                            f"spatial metrics not computed for {test_type}."
                         )
+                    elif using_indoor_rescue and turn_episodes < min_turn_episodes:
+                        self.logger.warning(
+                            f"Indoor corridor candidate detected but only {turn_episodes} "
+                            f"turn episodes found (threshold {min_turn_episodes}). "
+                            f"Spatial metrics not computed for {test_type}."
+                        )
+                    elif candidate_distance_m < min_span_m:
+                        self.logger.warning(
+                            f"Reconstructed GPS distance ({candidate_distance_m:.1f} m) below "
+                            f"threshold ({min_span_m:.1f} m). GPS-based spatial metrics not "
+                            f"computed for {test_type}."
+                        )
+                    else:
+                        walking_speed = candidate_distance_m / walking_duration_s
                         metrics["spatial_method"] = "gps"
-                        metrics["spatial_distance_m"] = gps_metrics[
-                            "total_path_m"
-                        ]
+                        metrics["spatial_distance_m"] = candidate_distance_m
                         metrics["walking_speed_mean_m_s"] = float(walking_speed)
                         if stride_time_mean_s > 0:
                             metrics["stride_length_mean_m"] = float(
@@ -1458,8 +1567,13 @@ class GaitDataProcessor:
                             )
                         self.logger.info(
                             f"Spatial metrics ({test_type}, GPS-based): "
-                            f"span={gps_metrics['span_m']:.1f} m, "
-                            f"path={gps_metrics['total_path_m']:.1f} m, "
+                            f"span={span_m:.1f} m, "
+                            f"path={direct_distance_m:.1f} m, "
+                            f"corridor_path={corridor_distance_m:.1f} m, "
+                            f"turn_episodes={turn_episodes}, "
+                            f"path_span_ratio={path_span_ratio:.2f}, "
+                            f"smoothed_outliers={gps_metrics['n_smoothed_outliers']}, "
+                            f"selected_distance={candidate_distance_m:.1f} m, "
                             f"walking_speed="
                             f"{metrics['walking_speed_mean_m_s']:.3f} m/s, "
                             f"stride_length="

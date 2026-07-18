@@ -70,7 +70,7 @@ gps_estimation:
 # from 3 patients. Constants are sensor- and population-specific;
 # recalibrate when hardware changes.
 spatial_models:
-  fallback_priority: [ "imu_zupt", "biometric", "gyro_norm"]
+  fallback_priority: [ "biometric", "gyro_norm", "imu_zupt"]
   # Gyro-norm model: stride_length = K_gyro * integral(|G|) during swing.
   # Invariant to sensor orientation. RMSE ~21% on calibration set.
   gyro_norm:
